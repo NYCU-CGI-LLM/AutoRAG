@@ -169,4 +169,4 @@ test_projects
 .vscode/
 
 
-./api/data/
+api/data/
