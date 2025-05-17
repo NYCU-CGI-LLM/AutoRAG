@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     work_dir: Path = Field(default=Path(__file__).resolve().parent.parent / "projects", env="AUTORAG_WORK_DIR")
     app_name: str = "AUO-RAG API"
     app_version: str = "0.1.0"
+    API_V1_STR: str = "/api/v1"
     cors_allow_origins: List[str] = ["*"]
     database_url: str = Field(..., env="DATABASE_URL")
     secret_key: str = Field(..., env="SECRET_KEY")
