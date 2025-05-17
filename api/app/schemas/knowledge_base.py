@@ -4,6 +4,7 @@ from uuid import UUID
 from datetime import datetime
 
 from .common import IDModel, TimestampModel, OrmBase
+from .variation import VariationSummary
 
 class KnowledgeBaseBase(OrmBase):
     name: str
@@ -17,7 +18,7 @@ class KnowledgeBase(KnowledgeBaseBase, IDModel, TimestampModel):
 
 class KnowledgeBaseDetail(KnowledgeBase):
     raw_file_count: int = 0
-    # variation_summaries: List[VariationSummary] # Commented out
+    variation_summaries: List[VariationSummary]
     pass
 
 class FileInfo(OrmBase):

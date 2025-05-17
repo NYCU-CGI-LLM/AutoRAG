@@ -6,7 +6,7 @@ import shutil # For file operations
 import json # Added for saving metadata
 
 from app.schemas import (
-    KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseDetail, FileInfo #, VariationSummary # Commented out
+    KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseDetail, FileInfo, VariationSummary # Uncommented VariationSummary
 )
 
 router = APIRouter(
@@ -142,13 +142,14 @@ async def get_knowledge_base(kb_id: UUID):
     if os.path.exists(raw_data_dir):
         raw_file_count = len([name for name in os.listdir(raw_data_dir) if os.path.isfile(os.path.join(raw_data_dir, name))])
 
-    # TODO: Fetch actual variation summaries
-    # variation_summaries = [] 
+    # TODO: Fetch actual variation summaries from the variations router/logic
+    variation_summaries: List[VariationSummary] = [] 
+    # Example: variation_summaries = await app.routes.variations.list_variations(kb_id=kb_id) # This needs proper DI or service layer
 
     return KnowledgeBaseDetail(
         **kb_data.model_dump(),
         raw_file_count=raw_file_count,
-        # variation_summaries=variation_summaries # Add when VariationSummary is complete
+        variation_summaries=variation_summaries # Uncommented
     )
 
 @router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)

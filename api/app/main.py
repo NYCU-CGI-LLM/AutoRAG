@@ -7,7 +7,7 @@ from mangum import Mangum
 
 from app.core.config import settings
 # Assuming your routers are in app.routes
-from app.routes import knowledge_bases #, variations, query, tasks # Updated imports
+from app.routes import knowledge_bases, variations, query, tasks # Updated imports
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
 logger = logging.getLogger(__name__) # Get logger for main.py
@@ -27,7 +27,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(knowledge_bases.router)
-# app.include_router(variations.router) # This handles /knowledge-bases/{kb_id}/variations
+app.include_router(variations.router) # This handles /knowledge-bases/{kb_id}/variations
 # app.include_router(query.router) # This handles /knowledge-bases/{kb_id}/variations/{variation_id}/query
 # app.include_router(tasks.router)
 
