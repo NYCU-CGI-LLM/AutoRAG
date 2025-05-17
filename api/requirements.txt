@@ -1,10 +1,10 @@
 AutoRAG[parse]==0.3.12
 AutoRAG[ko]==0.3.12
 pydantic<2.10.0
-jwt
-quart-cors
-Werkzeug
-quart-uploads
+fastapi
+python-jose[cryptography]
+sqlalchemy
+alembic
 uvicorn
 redis==4.5.1
 celery==5.2.7
