@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Dict, Literal, Any, Optional
 
 import numpy as np
@@ -81,7 +82,7 @@ class Trial(BaseModel):
     api_pid: Optional[int] = Field(None, description="The process id of the API server")
 
     @field_validator("report_task_id", "chat_task_id", mode="before")
-    def replace_nan_with_none(self, v):
+    def replace_nan_with_none(cls, v):
         if isinstance(v, float) and np.isnan(v):
             return None
         return v
@@ -136,3 +137,37 @@ class Task(BaseModel):
         None,
         description="Path where the task results are saved. It will be directory or file.",
     )
+
+
+# Definitions for QACreation copied from AutoRAG/temp/api/src/schema.py
+# These are assumed to be active and NOT deprecated.
+class QACreationPresetEnum(str, Enum):
+    BASIC = "basic"
+    SIMPLE = "simple"
+    ADVANCED = "advanced"
+
+
+class LLMConfig(BaseModel):
+    llm_name: str = Field(description="Name of the LLM model")
+    llm_params: dict = Field(description="Parameters for the LLM model", default={})
+
+
+class SupportLanguageEnum(str, Enum):
+    ENGLISH = "en"
+    KOREAN = "ko"
+    JAPANESE = "ja"
+
+
+class QACreationRequest(BaseModel):
+    preset: QACreationPresetEnum
+    name: str = Field(..., description="Name of the QA dataset")
+    chunked_name: str = Field(..., description="The name of the chunked data")
+    qa_num: int
+    llm_config: LLMConfig = Field(description="LLM configuration settings")
+    lang: SupportLanguageEnum = Field(
+        default=SupportLanguageEnum.ENGLISH, description="Language of the QA dataset"
+    )
+
+# Potentially other deprecated schemas like ParseRequest, ChunkRequest, EnvVariableRequest
+# from the source file are NOT copied over as they were not part of the immediate ImportError.
+# If they are needed, they can be added separately.
