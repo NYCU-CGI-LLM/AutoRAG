@@ -121,9 +121,12 @@ class CoAGenerator(BaseGenerator):
             error_msg += f" Expected constructor params (excluding self, project_dir): {expected_params - {'self', 'project_dir'}}."
             raise TypeError(error_msg)
 
-    def generate(self, queries: List[str], retrieved_contents: List[List[str]]) -> List[str]:
+    def generate(self, queries: List[str], retrieved_contents: List[List[str]], task_requirements: List[str]) -> List[str]:
         final_answers = []
         for i, current_query in enumerate(queries):
+            # Use the specific task_requirement for the current query
+            current_task_requirement = task_requirements[i]
+            
             retrieved_passages_for_query = retrieved_contents[i]
             x_document = "\n\n".join(retrieved_passages_for_query)
 
@@ -145,7 +148,7 @@ class CoAGenerator(BaseGenerator):
             
             final_answer_for_query = self._run_agent(llm_client_instance=self.manager_llm, 
                                                        instruction_template=self.im_template, 
-                                                       prompt_format_kwargs={"task_specific_requirement": self.task_specific_requirement, "final_cu": current_cu, "query": current_query},
+                                                       prompt_format_kwargs={"task_specific_requirement": current_task_requirement, "final_cu": current_cu, "query": current_query},
                                                        llm_config_for_call=self.manager_llm_config,
                                                        agent_type="Manager"
                                                        )
@@ -241,13 +244,32 @@ class CoAGenerator(BaseGenerator):
 
     @result_to_dataframe(["generated_texts", "generated_tokens", "generated_log_probs"])
     def pure(self, previous_result: pd.DataFrame, *args, **kwargs) -> Tuple[List[str], List[str], List[List[Optional[float]]]]:
-        if not all(col in previous_result.columns for col in ['query', 'retrieved_contents']):
-            raise ValueError("Input DataFrame must contain 'query' and 'retrieved_contents' columns for CoAGenerator.pure().")
+        if 'retrieved_contents' not in previous_result.columns:
+            raise ValueError("Input DataFrame must contain 'retrieved_contents' column for CoAGenerator.pure().")
 
-        queries = previous_result['query'].tolist()
+        # Determine the source for task requirements and queries
+        if 'prompts' in previous_result.columns:
+            logger.info(f"{self.CYAN}CoAGenerator: Using 'prompts' column from previous_result as dynamic 'task_specific_requirement' for each query.{self.RESET}")
+            task_requirements = previous_result['prompts'].tolist()
+            if 'query' not in previous_result.columns:
+                raise ValueError("Input DataFrame must contain 'query' column even if 'prompts' column is used for task_specific_requirement.")
+            queries = previous_result['query'].tolist()
+        elif 'query' in previous_result.columns:
+            logger.info(f"{self.CYAN}CoAGenerator: Using 'query' column as query and static 'task_specific_requirement' (from config: '{self.task_specific_requirement}').{self.RESET}")
+            queries = previous_result['query'].tolist()
+            # Use the static task_specific_requirement for all items
+            task_requirements = [self.task_specific_requirement] * len(queries)
+        else:
+            raise ValueError("Input DataFrame must contain at least 'query' and 'retrieved_contents' columns for CoAGenerator.pure().")
+
         retrieved_contents = previous_result['retrieved_contents'].tolist()
 
-        generated_texts_list = self.generate(queries=queries, retrieved_contents=retrieved_contents)
+        # Pass the determined task_requirements to the generate method
+        generated_texts_list = self.generate(
+            queries=queries, 
+            retrieved_contents=retrieved_contents,
+            task_requirements=task_requirements
+        )
 
         # Match the previous behavior where generated_tokens was the same as generated_texts
         generated_tokens_list = generated_texts_list 
