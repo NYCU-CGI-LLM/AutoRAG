@@ -26,10 +26,10 @@ from quart_cors import cors  # Import quart_cors to enable CORS
 from quart_uploads import UploadSet, configure_uploads
 from quart_uploads.file_ext import FileExtensions as fe
 
-from database.project_db import SQLiteProjectDB  # 올바른 임포트로 변경
+from autorag_cgi.api.app.db.project_db import SQLiteProjectDB  # 올바른 임포트로 변경
 from src.auth import require_auth
 from src.evaluate_history import get_new_trial_dir
-from src.schema import (
+from autorag_cgi.api.app.schemas._schema import (
     ChunkRequest,
     EnvVariableRequest,
     Project,

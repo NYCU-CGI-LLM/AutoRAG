@@ -2,7 +2,7 @@ import sqlite3
 import json
 from typing import Optional, List
 from datetime import datetime
-from src.schema import Trial, TrialConfig
+from app.schemas._schema import Trial, TrialConfig
 
 import os
 

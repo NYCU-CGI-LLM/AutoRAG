@@ -5,9 +5,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-# Assuming your routers are in app.routes
-from app.routes import knowledge_bases, variations, query, tasks # Updated imports
-from app.routers import simple_router # Added import for the new router
+# Routers are now consolidated in app.routers
+from app.routers import (
+    auth,
+    knowledge_bases,
+    projects,
+    query, # Assuming you might want to use this later
+    simple_router,
+    tasks, # Assuming you might want to use this later
+    variations
+)
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
 logger = logging.getLogger(__name__) # Get logger for main.py
@@ -26,18 +33,18 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(knowledge_bases.router)
-app.include_router(variations.router) # This handles /knowledge-bases/{kb_id}/variations
-# app.include_router(query.router) # This handles /knowledge-bases/{kb_id}/variations/{variation_id}/query
-# app.include_router(tasks.router)
-app.include_router(simple_router.router) # Included the new router
+app.include_router(projects.router)
+app.include_router(variations.router)
+app.include_router(simple_router.router)
+# app.include_router(query.router) # This was previously commented out, keeping as is
+# app.include_router(tasks.router) # This was previously commented out, keeping as is
 
 @app.get("/")
 async def root():
     return {"message": f"Welcome to {settings.app_name}"}
 
-# This is for AWS Lambda deployment, if you need it.
-# If not deploying to Lambda, you can remove mangum and this handler.
 
 # If you want to run directly with uvicorn (e.g., for local development):
 # if __name__ == "__main__":

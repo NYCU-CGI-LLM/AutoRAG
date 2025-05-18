@@ -9,4 +9,4 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # TODO: implement credential verification
     access_token = create_access_token({"sub": form_data.username})
-    return {"access_token": access_token, "token_type": "bearer"} 
+    return {"access_token": access_token, "token_type": "bearer"}

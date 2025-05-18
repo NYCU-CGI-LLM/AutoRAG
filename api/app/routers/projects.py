@@ -5,7 +5,7 @@ from typing import List
 
 from app.schemas.projects import Project, ProjectCreate
 from app.core.config import settings
-from database.project_db import SQLiteProjectDB
+from app.db.project_db import SQLiteProjectDB
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 

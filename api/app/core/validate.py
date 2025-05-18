@@ -2,8 +2,8 @@ import os
 from functools import wraps
 from quart import jsonify
 
-from src.schema import Trial
-from database.project_db import SQLiteProjectDB
+from autorag_cgi.api.app.schemas._schema import Trial
+from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
 
 
 def project_exists(base_dir: str):

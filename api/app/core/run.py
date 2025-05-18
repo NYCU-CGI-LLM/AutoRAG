@@ -10,7 +10,7 @@ from autorag.parser import Parser
 from autorag.validator import Validator
 
 from src.qa_create import default_create, fast_create, advanced_create
-from src.schema import QACreationRequest
+from autorag_cgi.api.app.schemas._schema import QACreationRequest
 
 
 def run_parser_start_parsing(data_path_glob, project_dir, yaml_path, all_files: bool):

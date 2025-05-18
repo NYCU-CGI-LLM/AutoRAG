@@ -8,9 +8,9 @@ import pandas as pd
 from celery import shared_task
 from dotenv import load_dotenv
 
-from database.project_db import SQLiteProjectDB
+from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
 from .base import TrialTask
-from src.schema import (
+from autorag_cgi.api.app.schemas._schema import (
     QACreationRequest,
     Status,
 )

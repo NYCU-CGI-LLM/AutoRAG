@@ -1,7 +1,7 @@
 from celery import Task
 from typing import Dict, Any
-from database.project_db import SQLiteProjectDB
-from src.schema import Status
+from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
+from autorag_cgi.api.app.schemas._schema import Status
 
 
 class TrialTask(Task):

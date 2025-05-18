@@ -3,8 +3,8 @@ import tempfile
 import pytest
 from datetime import datetime
 
-from database.project_db import SQLiteProjectDB
-from src.schema import Trial, TrialConfig
+from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
+from autorag_cgi.api.app.schemas._schema import Trial, TrialConfig
 
 
 @pytest.fixture
