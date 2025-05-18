@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 import os
 import shutil # For file operations
 import json # Added for saving metadata
+from datetime import datetime
 
 from app.schemas import (
-    KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseDetail, FileInfo, VariationSummary # Uncommented VariationSummary
+    KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseDetail, FileInfo, VariationSummary
 )
 
 router = APIRouter(
@@ -28,8 +29,15 @@ async def _get_kb_dir(kb_id: UUID) -> str:
 async def _get_kb_raw_data_dir(kb_id: UUID) -> str:
     return os.path.join(await _get_kb_dir(kb_id), "raw_data")
 
-async def _get_kb_variations_dir(kb_id: UUID) -> str:
-    return os.path.join(await _get_kb_dir(kb_id), "variations")
+async def _get_kb_parsed_data_dir(kb_id: UUID) -> str:
+    # This is the top-level directory for all parsing variations
+    return os.path.join(await _get_kb_dir(kb_id), "parsed_data")
+
+async def _get_kb_chunked_data_dir(kb_id: UUID) -> str:
+    return os.path.join(await _get_kb_dir(kb_id), "chunked_data")
+
+async def _get_kb_indexed_data_dir(kb_id: UUID) -> str:
+    return os.path.join(await _get_kb_dir(kb_id), "indexed_data")
 
 async def _get_kb_metadata_path(kb_id: UUID) -> str:
     return os.path.join(await _get_kb_dir(kb_id), "metadata.json")
@@ -70,13 +78,17 @@ async def create_knowledge_base(kb_create: KnowledgeBaseCreate):
     new_kb = KnowledgeBase(**kb_create.model_dump())
     kb_dir = await _get_kb_dir(new_kb.id)
     raw_data_dir = await _get_kb_raw_data_dir(new_kb.id)
-    variations_dir = await _get_kb_variations_dir(new_kb.id)
+    parsed_data_dir = await _get_kb_parsed_data_dir(new_kb.id)
+    chunked_data_dir = await _get_kb_chunked_data_dir(new_kb.id)
+    indexed_data_dir = await _get_kb_indexed_data_dir(new_kb.id)
     metadata_path = await _get_kb_metadata_path(new_kb.id)
 
     try:
         os.makedirs(kb_dir, exist_ok=False)
         os.makedirs(raw_data_dir, exist_ok=True)
-        os.makedirs(variations_dir, exist_ok=True)
+        os.makedirs(parsed_data_dir, exist_ok=True)
+        os.makedirs(chunked_data_dir, exist_ok=True)
+        os.makedirs(indexed_data_dir, exist_ok=True)
         # Persist KB metadata
         with open(metadata_path, 'w') as f:
             json.dump(new_kb.model_dump(mode='json'), f, indent=4) # Use mode='json' for datetime to str
@@ -251,4 +263,4 @@ async def delete_knowledge_base_file(kb_id: UUID, file_name: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File '{file_name}' not found.")
     
     await _write_files_metadata(kb_id, updated_metadata)
-    return 
+    return

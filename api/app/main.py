@@ -9,10 +9,11 @@ from app.core.config import settings
 from app.routers import (
     auth,
     knowledge_bases,
+    parsed_data_variations,
     query, # Assuming you might want to use this later
     simple_router,
     tasks, # Assuming you might want to use this later
-    variations
+    # variations # Removed variations router
 )
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
@@ -34,7 +35,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(knowledge_bases.router)
-app.include_router(variations.router)
+app.include_router(parsed_data_variations.router)
 app.include_router(simple_router.router)
 # app.include_router(query.router) # This was previously commented out, keeping as is
 # app.include_router(tasks.router) # This was previously commented out, keeping as is
