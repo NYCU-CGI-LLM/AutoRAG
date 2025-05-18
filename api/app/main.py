@@ -37,8 +37,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(knowledge_bases.router)
 app.include_router(parsed_data_variations.router)
-app.include_router(simple_router.router)
 app.include_router(chunking_variations.router)
+app.include_router(simple_router.router)
 # app.include_router(query.router) # This was previously commented out, keeping as is
 # app.include_router(tasks.router) # This was previously commented out, keeping as is
 
