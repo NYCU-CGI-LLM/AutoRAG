@@ -26,7 +26,7 @@ from quart_cors import cors  # Import quart_cors to enable CORS
 from quart_uploads import UploadSet, configure_uploads
 from quart_uploads.file_ext import FileExtensions as fe
 
-from autorag_cgi.api.app.db.project_db import SQLiteProjectDB  # 올바른 임포트로 변경
+# from autorag_cgi.api.app.db.project_db import SQLiteProjectDB  # 올바른 임포트로 변경
 from src.auth import require_auth
 from src.evaluate_history import get_new_trial_dir
 from autorag_cgi.api.app.schemas._schema import (
@@ -156,7 +156,7 @@ async def create_project():
         os.makedirs(os.path.join(new_project_dir, "config"))
         os.makedirs(os.path.join(new_project_dir, "raw_data"))
         # SQLiteProjectDB 인스턴스 생성
-        _ = SQLiteProjectDB(data["name"])
+        # _ = SQLiteProjectDB(data["name"])
     else:
         return jsonify({"error": f'Project name already exists: {data["name"]}'}), 400
 
@@ -266,14 +266,14 @@ async def list_projects():
 @app.route("/projects/<string:project_id>/trials", methods=["GET"])
 @project_exists(WORK_DIR)
 async def get_trial_lists(project_id: str):
-    project_db = SQLiteProjectDB(project_id)
+    # project_db = SQLiteProjectDB(project_id)
 
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
     offset = (page - 1) * limit
 
-    trials = project_db.get_trials_by_project(project_id, limit=limit, offset=offset)
-    total_trials = len(project_db.get_all_trial_ids(project_id))
+    # trials = project_db.get_trials_by_project(project_id, limit=limit, offset=offset)
+    # total_trials = len(project_db.get_all_trial_ids(project_id))
 
     return jsonify(
         {"total": total_trials, "data": [trial.model_dump() for trial in trials]}
@@ -320,7 +320,7 @@ async def scan_directory(path: str) -> FileNode:
 @app.route("/projects/<string:project_id>/trials", methods=["POST"])
 @project_exists(WORK_DIR)
 async def create_trial(project_id: str):
-    project_db = SQLiteProjectDB(project_id)
+    # project_db = SQLiteProjectDB(project_id)
 
     data = await request.get_json()
     data["project_id"] = project_id
@@ -332,16 +332,16 @@ async def create_trial(project_id: str):
         id=new_trial_id,
     )
     trial.config.trial_id = new_trial_id
-    project_db.set_trial(trial)
+    # project_db.set_trial(trial)
     return jsonify(trial.model_dump())
 
 
 @app.route("/projects/<string:project_id>/trials/<string:trial_id>", methods=["GET"])
 @project_exists(WORK_DIR)
 async def get_trial(project_id: str, trial_id: str):
-    project_db = SQLiteProjectDB(project_id)
+    # project_db = SQLiteProjectDB(project_id)
 
-    trial = project_db.get_trial(trial_id)
+    trial = # project_db.get_trial(trial_id)
     if not trial:
         return jsonify({"error": "Trial not found"}), 404
 
@@ -351,9 +351,9 @@ async def get_trial(project_id: str, trial_id: str):
 @app.route("/projects/<string:project_id>/trials/<string:trial_id>", methods=["DELETE"])
 @project_exists(WORK_DIR)
 async def delete_trial(project_id: str, trial_id: str):
-    project_db = SQLiteProjectDB(project_id)
+    # project_db = SQLiteProjectDB(project_id)
 
-    project_db.delete_trial(trial_id)
+    # project_db.delete_trial(trial_id)
     return jsonify({"message": "Trial deleted successfully"})
 
 
@@ -615,8 +615,8 @@ async def create_qa(project_id: str):
 @project_exists(WORK_DIR)
 @trial_exists
 async def get_trial_config(project_id: str, trial_id: str):
-    project_db = SQLiteProjectDB(project_id)
-    trial = project_db.get_trial(trial_id)
+    # project_db = SQLiteProjectDB(project_id)
+    trial = # project_db.get_trial(trial_id)
     if not trial:
         return jsonify({"error": "Trial not found"}), 404
     return jsonify(trial.config), 200
@@ -628,14 +628,15 @@ async def get_trial_config(project_id: str, trial_id: str):
 @project_exists(WORK_DIR)
 @trial_exists
 async def set_trial_config(project_id: str, trial_id: str):
-    project_db = SQLiteProjectDB(project_id)
-    trial = project_db.get_trial(trial_id)
+    # project_db = SQLiteProjectDB(project_id)
+    trial = # project_db.get_trial(trial_id)
     if not trial:
         return jsonify({"error": "Trial not found"}), 404
 
     data = await request.get_json()
     if data.get("config", None) is not None:
-        project_db.set_trial_config(trial_id, TrialConfig(**data["config"]))
+        # project_db.set_trial_config(trial_id, TrialConfig(**data["config"]))
+        pass
 
     return jsonify({"message": "Config updated successfully"}), 200
 
@@ -647,8 +648,8 @@ async def set_trial_config(project_id: str, trial_id: str):
 @trial_exists
 async def run_validate(project_id: str, trial_id: str):
     try:
-        trial_config_db = SQLiteProjectDB(project_id)
-        trial_config: TrialConfig = trial_config_db.get_trial(trial_id).config
+        # trial_config_db = SQLiteProjectDB(project_id)
+        trial_config: TrialConfig = # trial_config_db.get_trial(trial_id).config
         task = start_validate.delay(
             project_id=project_id,
             trial_id=trial_id,
@@ -668,8 +669,8 @@ async def run_validate(project_id: str, trial_id: str):
 @trial_exists
 async def run_evaluate(project_id: str, trial_id: str):
     try:
-        trial_config_db = SQLiteProjectDB(project_id)
-        new_config = trial_config_db.get_trial(trial_id).config
+        # trial_config_db = SQLiteProjectDB(project_id)
+        new_config = # trial_config_db.get_trial(trial_id).config
         if (
             new_config.corpus_name is None
             or new_config.qa_name is None
@@ -682,7 +683,7 @@ async def run_evaluate(project_id: str, trial_id: str):
         skip_validation = data.get("skip_validation", False)
         full_ingest = data.get("full_ingest", True)
 
-        trial_configs = trial_config_db.get_all_configs()
+        # trial_configs = trial_config_db.get_all_configs()
         print(f"trial config length : {len(trial_configs)}")
         print(f"DB configs list: {list(map(lambda x: x.trial_id, trial_configs))}")
         original_trial_configs = [
@@ -695,7 +696,7 @@ async def run_evaluate(project_id: str, trial_id: str):
         print(f"new_trial_dir: {new_trial_dir}")
 
         new_config.save_dir = new_trial_dir
-        trial_config_db.set_trial_config(trial_id, new_config)
+        # trial_config_db.set_trial_config(trial_id, new_config)
 
         if os.path.exists(new_trial_dir):
             return jsonify(
@@ -740,8 +741,8 @@ async def open_dashboard(project_id: str, trial_id: str):
             JSON response with task status or error message
     """
     try:
-        db = SQLiteProjectDB(project_id)
-        trial = db.get_trial(trial_id)
+        # db = SQLiteProjectDB(project_id)
+        trial = # db.get_trial(trial_id)
 
         if trial.config.save_dir is None or not os.path.exists(trial.config.save_dir):
             return jsonify({"error": "Trial directory not found"}), 404
@@ -766,8 +767,8 @@ async def open_dashboard(project_id: str, trial_id: str):
     methods=["GET"],
 )
 async def close_dashboard(project_id: str, trial_id: str):
-    db = SQLiteProjectDB(project_id)
-    trial = db.get_trial(trial_id)
+    # db = SQLiteProjectDB(project_id)
+    trial = # db.get_trial(trial_id)
 
     if trial.report_task_id is None:
         return jsonify({"error": "The report already closed"}), 409
@@ -776,7 +777,7 @@ async def close_dashboard(project_id: str, trial_id: str):
 
     new_trial = trial.model_copy(deep=True)
     new_trial.report_task_id = None
-    db.set_trial(new_trial)
+    # db.set_trial(new_trial)
 
     return jsonify({"task_id": trial.report_task_id, "status": "terminated"}), 200
 
@@ -786,8 +787,8 @@ async def close_dashboard(project_id: str, trial_id: str):
 )
 async def open_chat_server(project_id: str, trial_id: str):
     try:
-        db = SQLiteProjectDB(project_id)
-        trial = db.get_trial(trial_id)
+        # db = SQLiteProjectDB(project_id)
+        trial = # db.get_trial(trial_id)
 
         if trial.config.save_dir is None or not os.path.exists(trial.config.save_dir):
             return jsonify({"error": "Trial directory not found"}), 404
@@ -863,8 +864,8 @@ async def delete_artifact(project_id: str):
     "/projects/<string:project_id>/trials/<string:trial_id>/chat/close", methods=["GET"]
 )
 async def close_chat_server(project_id: str, trial_id: str):
-    db = SQLiteProjectDB(project_id)
-    trial = db.get_trial(trial_id)
+    # db = SQLiteProjectDB(project_id)
+    trial = # db.get_trial(trial_id)
 
     if trial.chat_task_id is None:
         return jsonify({"error": "The chat server already closed"}), 409
@@ -876,7 +877,7 @@ async def close_chat_server(project_id: str, trial_id: str):
 
     new_trial = trial.model_copy(deep=True)
     new_trial.chat_task_id = None
-    db.set_trial(new_trial)
+    # db.set_trial(new_trial)
 
     return jsonify({"task_id": trial.chat_task_id, "status": "terminated"}), 200
 
@@ -888,8 +889,8 @@ async def close_chat_server(project_id: str, trial_id: str):
 @trial_exists
 async def open_api_server(project_id: str, trial_id: str):
     try:
-        db = SQLiteProjectDB(project_id)
-        trial = db.get_trial(trial_id)
+        # db = SQLiteProjectDB(project_id)
+        trial = # db.get_trial(trial_id)
 
         if trial.api_pid is not None:
             return jsonify({"error": "API server already running"}), 409
@@ -913,8 +914,8 @@ async def open_api_server(project_id: str, trial_id: str):
 @project_exists(WORK_DIR)
 @trial_exists
 async def close_api_server(project_id: str, trial_id: str):
-    db = SQLiteProjectDB(project_id)
-    trial = db.get_trial(trial_id)
+    # db = SQLiteProjectDB(project_id)
+    trial = # db.get_trial(trial_id)
 
     if trial.api_pid is None:
         return jsonify({"error": "The api server already closed"}), 409
@@ -926,7 +927,7 @@ async def close_api_server(project_id: str, trial_id: str):
 
     new_trial = trial.model_copy(deep=True)
     new_trial.api_pid = None
-    db.set_trial(new_trial)
+    # db.set_trial(new_trial)
 
     return jsonify({"task_id": trial.api_pid, "status": "terminated"}), 200
 

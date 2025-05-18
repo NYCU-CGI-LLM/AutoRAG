@@ -20,13 +20,13 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     cors_allow_origins: List[str] = ["*"]
-    database_url: str = Field(..., env="DATABASE_URL")
+    # database_url: str = Field(..., env="DATABASE_URL")
     secret_key: str = Field(..., env="SECRET_KEY")
     access_token_expire_minutes: int = 30
 
 logger = logging.getLogger(__name__)
 logger.info("Before Settings instantiation in config.py")
-logger.info(f"DATABASE_URL in config.py (os.getenv): {os.getenv('DATABASE_URL')}")
+# logger.info(f"DATABASE_URL in config.py (os.getenv): {os.getenv('DATABASE_URL')}")
 logger.info(f"SECRET_KEY in config.py (os.getenv): {os.getenv('SECRET_KEY')}")
 
 settings = Settings()

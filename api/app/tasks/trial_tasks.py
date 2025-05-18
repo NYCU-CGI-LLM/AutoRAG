@@ -8,7 +8,7 @@ import pandas as pd
 from celery import shared_task
 from dotenv import load_dotenv
 
-from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
+# from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
 from .base import TrialTask
 from autorag_cgi.api.app.schemas._schema import (
     QACreationRequest,
@@ -295,47 +295,41 @@ def start_validate(
     yaml_config: dict,
 ):
     load_dotenv(ENV_FILEPATH)
-    logger.info(f"Start validate task for project_id: {project_id}, trial_id: {trial_id}")
-    trial_path = os.path.join(WORK_DIR, project_id, "trial", trial_id)
-    if not os.path.exists(trial_path):
-        logger.error(f"Trial path {trial_path} does not exist.")
-        raise ValueError(f"Trial path {trial_path} does not exist.")
-
-    db_path = os.path.join(trial_path, "project.db")
-    db = SQLiteProjectDB(db_path)
-    previous_status = db.get_trial_status(trial_id)
-
-    if previous_status.get("status") == Status.VALIDATED:
-        logger.info(f"Trial {trial_id} already validated. Skipping.")
-        return
-    elif previous_status.get("status") == Status.COMPLETED:
-        logger.info(f"Trial {trial_id} already completed. Skipping validation.")
-        return
-
     try:
         self.update_state_and_db(
             trial_id=trial_id,
             project_id=project_id,
-            status=Status.VALIDATING,
+            status=Status.IN_PROGRESS,
             progress=0,
             task_type="validate",
         )
-        config_path = os.path.join(trial_path, "config.yaml")
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(yaml_config, f)
+        project_db_path = os.path.join(WORK_DIR, project_id, "project")
+        # db = SQLiteProjectDB(project_id)
+        # trial = db.get_trial(trial_id)
+        # if trial is None:
+        #     raise ValueError(f"Trial with ID {trial_id} not found in the database.")
+        # 
+        # trial.status = Status.IN_PROGRESS
+        # db.set_trial(trial)
 
-        validate_result = run_validate(config_path, trial_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.yaml")
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(yaml_config, f)
 
-        self.update_state_and_db(
-            trial_id=trial_id,
-            project_id=project_id,
-            status=Status.VALIDATED,
-            progress=100,
-            task_type="validate",
-            info=validate_result,
-        )
+            validate_result = run_validate(config_path, project_db_path)
+
+            self.update_state_and_db(
+                trial_id=trial_id,
+                project_id=project_id,
+                status=Status.COMPLETED,
+                progress=100,
+                task_type="validate",
+            )
+            # trial.status = Status.COMPLETED
+            # db.set_trial(trial)
+            return validate_result
     except Exception as e:
-        logger.error(f"Error during validation for trial {trial_id}: {str(e)}")
         self.update_state_and_db(
             trial_id=trial_id,
             project_id=project_id,
@@ -344,6 +338,9 @@ def start_validate(
             task_type="validate",
             info={"error": str(e)},
         )
+        # if trial:
+        #     trial.status = Status.FAILED
+        #     db.set_trial(trial)
         raise
 
 
@@ -360,28 +357,32 @@ def start_evaluate(
     full_ingest: bool = True,
 ):
     load_dotenv(ENV_FILEPATH)
-    logger.info(
-        f"Start evaluate task for project_id: {project_id}, trial_id: {trial_id}"
-    )
-    trial_path = os.path.join(project_dir, "trial", trial_id)
-    if not os.path.exists(trial_path):
-        os.makedirs(trial_path)
-
     try:
         self.update_state_and_db(
             trial_id=trial_id,
             project_id=project_id,
-            status=Status.EVALUATING,
+            status=Status.IN_PROGRESS,
             progress=0,
             task_type="evaluate",
         )
-        config_path = os.path.join(trial_path, "config.yaml")
+        # db = SQLiteProjectDB(project_id)
+        # trial = db.get_trial(trial_id)
+        # if trial is None:
+        #     raise ValueError(f"Trial with ID {trial_id} not found in the database.")
+
+        # trial.status = Status.IN_PROGRESS
+        # db.set_trial(trial)
+
+        if not os.path.exists(project_dir):
+            os.makedirs(project_dir)
+
+        config_path = os.path.join(project_dir, "config.yaml")
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(yaml_config, f)
 
         best_result = run_start_trial(
             config_path,
-            trial_path,
+            project_dir,
             skip_validation=skip_validation,
             project_dir=project_dir,
             full_ingest=full_ingest,
@@ -395,11 +396,11 @@ def start_evaluate(
             status=Status.COMPLETED,
             progress=100,
             task_type="evaluate",
-            info=best_result,
         )
-
+        # trial.status = Status.COMPLETED
+        # db.set_trial(trial)
+        return best_result
     except Exception as e:
-        logger.error(f"Error during trial {trial_id}: {str(e)}")
         self.update_state_and_db(
             trial_id=trial_id,
             project_id=project_id,
@@ -408,6 +409,9 @@ def start_evaluate(
             task_type="evaluate",
             info={"error": str(e)},
         )
+        # if trial:
+        #     trial.status = Status.FAILED
+        #     db.set_trial(trial)
         raise
 
 
@@ -422,8 +426,16 @@ def start_dashboard(self, project_id: str, trial_id: str, trial_dir: str):
             progress=0,
             task_type="dashboard",
         )
+        # db = SQLiteProjectDB(project_id)
+        # trial = db.get_trial(trial_id)
+        # if trial is None:
+        #     raise ValueError(f"Trial with ID {trial_id} not found in the database.")
 
-        run_dashboard(trial_dir)
+        # # PID 저장
+        # trial.report_task_id = str(os.getpid())
+        # db.set_trial(trial)
+
+        result = run_dashboard(trial_dir)
         logger.info(f"Dashboard started for trial_id: {trial_id}")
         self.update_state_and_db(
             trial_id=trial_id,
@@ -432,7 +444,11 @@ def start_dashboard(self, project_id: str, trial_id: str, trial_dir: str):
             progress=100,
             task_type="dashboard",
         )
+        # # PID 제거
+        # trial.report_task_id = None
+        # db.set_trial(trial)
 
+        return result
     except Exception as e:
         logger.error(f"Error starting dashboard for trial {trial_id}: {str(e)}")
         self.update_state_and_db(
@@ -443,6 +459,9 @@ def start_dashboard(self, project_id: str, trial_id: str, trial_dir: str):
             task_type="dashboard",
             info={"error": str(e)},
         )
+        # if trial:
+        #     trial.report_task_id = None  # 에러 발생 시 PID 제거
+        #     db.set_trial(trial)
         raise
 
 
@@ -455,19 +474,30 @@ def start_chat_server(self, project_id: str, trial_id: str, trial_dir: str):
             project_id=project_id,
             status=Status.IN_PROGRESS,
             progress=0,
-            task_type="chat_server",
+            task_type="chat",
         )
+        # db = SQLiteProjectDB(project_id)
+        # trial = db.get_trial(trial_id)
+        # if trial is None:
+        #     raise ValueError(f"Trial with ID {trial_id} not found in the database.")
 
-        run_chat(trial_dir)
+        # # PID 저장
+        # trial.chat_task_id = str(os.getpid())
+        # db.set_trial(trial)
+
+        result = run_chat(trial_dir)
         logger.info(f"Chat server started for trial_id: {trial_id}")
         self.update_state_and_db(
             trial_id=trial_id,
             project_id=project_id,
             status=Status.COMPLETED,
             progress=100,
-            task_type="chat_server",
+            task_type="chat",
         )
-
+        # # PID 제거
+        # trial.chat_task_id = None
+        # db.set_trial(trial)
+        return result
     except Exception as e:
         logger.error(f"Error starting chat server for trial {trial_id}: {str(e)}")
         self.update_state_and_db(
@@ -475,9 +505,12 @@ def start_chat_server(self, project_id: str, trial_id: str, trial_dir: str):
             project_id=project_id,
             status=Status.FAILED,
             progress=0,
-            task_type="chat_server",
+            task_type="chat",
             info={"error": str(e)},
         )
+        # if trial:
+        #     trial.chat_task_id = None  # 에러 발생 시 PID 제거
+        #     db.set_trial(trial)
         raise
 
 
@@ -490,19 +523,30 @@ def start_api_server(self, project_id: str, trial_id: str, trial_dir: str):
             project_id=project_id,
             status=Status.IN_PROGRESS,
             progress=0,
-            task_type="api_server",
+            task_type="api",
         )
+        # db = SQLiteProjectDB(project_id)
+        # trial = db.get_trial(trial_id)
+        # if trial is None:
+        #     raise ValueError(f"Trial with ID {trial_id} not found in the database.")
 
-        run_api_server(trial_dir)
+        # # PID 저장
+        # trial.api_pid = os.getpid()
+        # db.set_trial(trial)
+
+        result = run_api_server(trial_dir)
         logger.info(f"API server started for trial_id: {trial_id}")
         self.update_state_and_db(
             trial_id=trial_id,
             project_id=project_id,
             status=Status.COMPLETED,
             progress=100,
-            task_type="api_server",
+            task_type="api",
         )
-
+        # # PID 제거
+        # trial.api_pid = None
+        # db.set_trial(trial)
+        return result
     except Exception as e:
         logger.error(f"Error starting API server for trial {trial_id}: {str(e)}")
         self.update_state_and_db(
@@ -510,7 +554,10 @@ def start_api_server(self, project_id: str, trial_id: str, trial_dir: str):
             project_id=project_id,
             status=Status.FAILED,
             progress=0,
-            task_type="api_server",
+            task_type="api",
             info={"error": str(e)},
         )
+        # if trial:
+        #     trial.api_pid = None  # 에러 발생 시 PID 제거
+        #     db.set_trial(trial)
         raise 

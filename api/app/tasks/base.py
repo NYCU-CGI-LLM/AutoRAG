@@ -1,6 +1,6 @@
 from celery import Task
 from typing import Dict, Any
-from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
+# from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
 from autorag_cgi.api.app.schemas._schema import Status
 
 
@@ -35,12 +35,12 @@ class TrialTask(Task):
         )
 
         # SQLite DB 업데이트
-        project_db = SQLiteProjectDB(project_id)
-        trial = project_db.get_trial(trial_id)
-        if trial:
-            if task_type == "evaluate" and status == Status.COMPLETED:
-                trial.status = Status.COMPLETED
-            project_db.set_trial(trial)
+        # project_db = SQLiteProjectDB(project_id)
+        # trial = project_db.get_trial(trial_id)
+        # if trial:
+        #     if task_type == "evaluate" and status == Status.COMPLETED:
+        #         trial.status = Status.COMPLETED
+        #     project_db.set_trial(trial)
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Handle task failure"""

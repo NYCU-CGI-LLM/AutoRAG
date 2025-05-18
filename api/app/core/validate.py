@@ -3,7 +3,7 @@ from functools import wraps
 from quart import jsonify
 
 from autorag_cgi.api.app.schemas._schema import Trial
-from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
+# from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
 
 
 def project_exists(base_dir: str):
@@ -34,8 +34,9 @@ def trial_exists(func):
         if not trial_id:
             return jsonify({"error": "trial_id is required"}), 400
 
-        project_db = SQLiteProjectDB(project_id)
-        trial = project_db.get_trial(trial_id)
+        # project_db = SQLiteProjectDB(project_id)
+        # trial = project_db.get_trial(trial_id)
+        trial = None # Placeholder, as SQLite is disabled
         if trial is None or not isinstance(trial, Trial):
             return jsonify({"error": f"Trial with id {trial_id} does not exist"}), 404
 
