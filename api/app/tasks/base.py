@@ -50,4 +50,4 @@ class TrialTask(Task):
     def on_success(self, retval, task_id, args, kwargs):
         """Handle task success"""
         super().on_success(retval, task_id, args, kwargs)
-        # Add your success handling logic here
+        # Add your success handling logic here 

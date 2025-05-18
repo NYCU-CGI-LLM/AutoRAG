@@ -3,11 +3,11 @@ import logging, os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 
 from app.core.config import settings
 # Assuming your routers are in app.routes
 from app.routes import knowledge_bases, variations, query, tasks # Updated imports
+from app.routers import simple_router # Added import for the new router
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
 logger = logging.getLogger(__name__) # Get logger for main.py
@@ -30,6 +30,7 @@ app.include_router(knowledge_bases.router)
 app.include_router(variations.router) # This handles /knowledge-bases/{kb_id}/variations
 # app.include_router(query.router) # This handles /knowledge-bases/{kb_id}/variations/{variation_id}/query
 # app.include_router(tasks.router)
+app.include_router(simple_router.router) # Included the new router
 
 @app.get("/")
 async def root():
@@ -37,7 +38,6 @@ async def root():
 
 # This is for AWS Lambda deployment, if you need it.
 # If not deploying to Lambda, you can remove mangum and this handler.
-handler = Mangum(app)
 
 # If you want to run directly with uvicorn (e.g., for local development):
 # if __name__ == "__main__":

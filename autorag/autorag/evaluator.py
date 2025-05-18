@@ -236,7 +236,7 @@ class Evaluator:
 			)
 
 			if len(bm25_tokenizer_list) == 0:
-				bm25_tokenizer_list = ["porter_stemmer"]
+				bm25_tokenizer_list = ["porter_stemmer"] # TODO: change default tokenizer other where
 			for bm25_tokenizer in bm25_tokenizer_list:
 				bm25_dir = os.path.join(
 					self.project_dir, "resources", get_bm25_pkl_name(bm25_tokenizer)
