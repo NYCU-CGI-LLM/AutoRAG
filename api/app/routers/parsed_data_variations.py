@@ -7,7 +7,12 @@ import json
 from datetime import datetime
 
 from app.schemas import ParsingVariationCreate, ParsingVariation
-from app.tasks.data_processing_tasks import parse_data_task
+# Import new tasks and ensure parse_data_task is also available if not already used directly
+from app.tasks.data_processing_tasks import (
+    parse_data_task, 
+    finalize_parsing_variation_task, 
+    handle_parsing_failure_task
+)
 # Import necessary helper functions from knowledge_bases.py
 # These are for base KB paths that parsed variation paths will build upon.
 from .knowledge_bases import _get_kb_dir, _get_kb_raw_data_dir, _get_kb_parsed_data_dir
@@ -15,6 +20,13 @@ from .knowledge_bases import _get_kb_dir, _get_kb_raw_data_dir, _get_kb_parsed_d
 router = APIRouter(
     prefix="/knowledge-bases/{kb_id}/parsed-data/variations",
     tags=["Parsed Data Variations"],
+)
+
+# Define the base directory for parser configuration files
+# This path is relative to the `parsed_data_variations.py` file's location (routers directory)
+# Adjust if your config directory is elsewhere, e.g., at the root of the API app.
+PARSER_CONFIGS_BASE_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "config", "parse")
 )
 
 # --- Helper Functions for Parsed Data Variations ---
@@ -71,23 +83,34 @@ async def create_parse_variation(
         # if not files_metadata:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Knowledge Base has no raw files to parse. Upload files first.")
 
+    # Determine the parser YAML path to use
+    parser_yaml_to_use = None
+    if variation_create.parser_config_filename:
+        candidate_path = os.path.join(PARSER_CONFIGS_BASE_DIR, variation_create.parser_config_filename)
+        if not os.path.isfile(candidate_path):
+            # You might want to list available configs here in the error message
+            # available_configs = [f for f in os.listdir(PARSER_CONFIGS_BASE_DIR) if os.path.isfile(os.path.join(PARSER_CONFIGS_BASE_DIR, f)) and f.endswith('.yaml')]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=f"Parser config file '{variation_create.parser_config_filename}' not found in config directory. Check available configurations."
+            )
+        parser_yaml_to_use = candidate_path
+    else:
+        # Default behavior if no config filename is provided: use a default.yaml if it exists
+        default_yaml_path = os.path.join(PARSER_CONFIGS_BASE_DIR, "default.yaml")
+        if not os.path.isfile(default_yaml_path):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail="No parser_config_filename provided and default.yaml not found in config directory."
+            )
+        parser_yaml_to_use = default_yaml_path
+
     variation_id = uuid4()
     variation_output_dir = await _get_kb_parse_variation_dir(kb_id, variation_id)
     os.makedirs(variation_output_dir, exist_ok=True)
 
-    # Determine parser_yaml_path (this logic might be refined based on how configs are managed)
-    default_parser_yaml = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "config", "simple_parse.yaml")
-    )
-    parser_yaml_to_use = default_parser_yaml
-    if variation_create.parser_config and isinstance(variation_create.parser_config.get("yaml_path"), str) :
-        # Example: if parser_config directly provides a path. This needs careful handling for security (path traversal)
-        # For now, let's assume parser_config might contain the YAML content directly, or this logic gets more robust.
-        # This part is a placeholder for how parser_config might specify a custom YAML.
-        # For simplicity, if parser_config has a 'yaml_path' key, we use it. Otherwise, default.
-        # This might need adjustment based on how you pass YAML configurations.
-        parser_yaml_to_use = variation_create.parser_config.get("yaml_path", default_parser_yaml)
-
+    # Get the metadata path to pass to callback tasks
+    variation_metadata_path = await _get_kb_parse_variation_metadata_path(kb_id, variation_id)
 
     data_path_glob = os.path.join(raw_data_dir, "*.*") 
 
@@ -96,20 +119,28 @@ async def create_parse_variation(
         kb_id=kb_id,
         variation_name=variation_create.variation_name if variation_create.variation_name else f"Parse-{variation_id.hex[:8]}",
         description=variation_create.description,
-        parser_config=variation_create.parser_config,
+        # Store the filename that was used, not the full path or dict content
+        parser_config_filename=variation_create.parser_config_filename if variation_create.parser_config_filename else "default.yaml",
         status="pending",
         output_dir=variation_output_dir 
     )
     await _write_parse_variation_metadata(variation_metadata)
 
-    task_result = parse_data_task.delay(
+    # Use apply_async to link tasks
+    task_signature = parse_data_task.s(
         project_id=str(kb_id), 
         data_path_glob=data_path_glob,
         target_variation_output_dir=variation_output_dir,
         parser_yaml_path=parser_yaml_to_use,
-        all_files=True 
+        all_files=True
+    ).set(
+        link=finalize_parsing_variation_task.s(variation_metadata_path_str=str(variation_metadata_path)),
+        link_error=handle_parsing_failure_task.s(variation_metadata_path_str=str(variation_metadata_path))
     )
+    
+    task_result = task_signature.apply_async()
 
+    # Update metadata with celery_task_id and status="processing"
     variation_metadata.celery_task_id = task_result.id
     variation_metadata.status = "processing"
     variation_metadata.updated_at = datetime.utcnow()

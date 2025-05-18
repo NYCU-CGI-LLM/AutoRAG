@@ -1,6 +1,8 @@
-import multiprocessing as mp
+# import multiprocessing as mp
+from multiprocessing.dummy import Pool as ThreadingPool
 from itertools import chain
 from typing import List, Tuple
+import os
 
 from autorag.data import parse_modules
 from autorag.data.parse.base import parser_node
@@ -24,9 +26,10 @@ def langchain_parse(
 		pages = [-1] * len(texts)
 
 	else:
-		num_workers = mp.cpu_count()
-		# Execute parallel processing
-		with mp.Pool(num_workers) as pool:
+		# num_workers = mp.cpu_count() # mp is no longer multiprocessing
+		num_workers = os.cpu_count() if os.cpu_count() else 1 # Get CPU count safely
+		# Execute parallel processing with ThreadingPool
+		with ThreadingPool(num_workers) as pool: # Use ThreadingPool
 			results = pool.starmap(
 				langchain_parse_pure,
 				[(data_path, parse_method, kwargs) for data_path in data_path_list],

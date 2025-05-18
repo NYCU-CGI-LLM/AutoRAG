@@ -6,7 +6,8 @@ from datetime import datetime
 class ParsingVariationBase(BaseModel):
     variation_name: Optional[str] = None
     description: Optional[str] = None
-    parser_config: Optional[Dict[str, Any]] = None # Can store YAML content as dict or reference to a config
+    # Changed from Dict[str, Any] to str, representing the filename of the parser config
+    parser_config_filename: Optional[str] = Field(default=None, description="Filename of the parser configuration YAML (e.g., 'default.yaml') from the predefined parse config directory.")
 
 class ParsingVariationCreate(ParsingVariationBase):
     pass
@@ -20,6 +21,7 @@ class ParsingVariation(ParsingVariationBase):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     output_dir: Optional[str] = None # Path to the variation's output directory
     parsed_file_path: Optional[str] = None # Path to the final .parquet file from this variation
+    # parser_config field is inherited from ParsingVariationBase and is now parser_config_filename
 
     class Config:
         orm_mode = True # if you plan to use this with an ORM

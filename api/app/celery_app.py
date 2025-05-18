@@ -5,8 +5,8 @@ from celery import Celery
 # This is needed so that names can be generated automatically when tasks are defined in the __main__ module.
 # Or, if you have a discovery mechanism, the name of the main app package.
 app = Celery('app', include=[
-    'app.tasks.trial_tasks',
-    'app.tasks.simple_tasks'
+    'app.tasks.simple_tasks',
+    'app.tasks.data_processing_tasks'
 ])
 
 # Load configuration from the celeryconfig.py module within the 'app' package

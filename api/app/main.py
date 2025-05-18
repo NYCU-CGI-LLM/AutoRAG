@@ -10,9 +10,9 @@ from app.routers import (
     auth,
     knowledge_bases,
     parsed_data_variations,
-    query, # Assuming you might want to use this later
+    # query, # Assuming you might want to use this later
     simple_router,
-    tasks, # Assuming you might want to use this later
+    # tasks, # Assuming you might want to use this later
     # variations # Removed variations router
 )
 
