@@ -1,0 +1,35 @@
+node_lines:
+- node_line_name: retrieve_node_line
+  nodes:
+  - modules:
+    - module_type: BM25
+      top_k: 3
+    node_type: retrieval
+    strategy:
+      metrics:
+      - retrieval_f1
+      - retrieval_recall
+      - retrieval_ndcg
+      - retrieval_mrr
+- node_line_name: generate_node_line
+  nodes:
+  - modules:
+    - agent_window_size_k: 6000
+      llm: openai
+      manager_llm_config:
+        llm: gpt-4o-mini
+        max_tokens: 1024
+        module_type: openai_llm
+        temperature: 0.0
+      module_type: CoAGenerator
+      task_specific_requirement: Answer the question based on the given passages.
+      worker_llm_config:
+        llm: gpt-4o-mini
+        max_tokens: 1024
+        module_type: openai_llm
+        temperature: 0.0
+    node_type: generator
+    strategy:
+      metrics:
+      - metric_name: meteor
+      - metric_name: rouge
