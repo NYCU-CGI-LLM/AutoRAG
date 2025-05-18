@@ -198,3 +198,126 @@ def handle_parsing_failure_task(self, *args, variation_metadata_path_str: str):
     except Exception as e:
         logger.error(f"Task {self.request.id}: Error updating parsing variation metadata to failed at {variation_metadata_path_str}: {str(e)}", exc_info=True)
         raise # Re-raise to mark the task as failed
+
+# === Chunking Variation Tasks ===
+
+@shared_task(bind=True)
+def chunk_data_variation_task(
+    self,
+    kb_id: str, 
+    parsed_file_path: str, 
+    target_chunk_variation_output_dir: str, 
+    chunker_yaml_path: str = _DEFAULT_CHUNKER_YAML_PATH,
+):
+    """
+    Celery task to chunk data for a specific chunking variation.
+    The chunker will use target_chunk_variation_output_dir as its base save directory.
+    AutoRAG's Chunker is expected to create its own subdirectories (e.g., '0') within this.
+    """
+    load_dotenv(ENV_FILEPATH)
+    os.makedirs(target_chunk_variation_output_dir, exist_ok=True)
+
+    try:
+        logger.info(f"Task {self.request.id}: Starting chunking for KB {kb_id}, parsed file {parsed_file_path}, variation output to {target_chunk_variation_output_dir}")
+        run_chunker_start_chunking(
+            raw_path=parsed_file_path, 
+            save_dir=target_chunk_variation_output_dir, 
+            yaml_path=chunker_yaml_path,
+        )
+        logger.info(f"Task {self.request.id}: Chunking completed. Output expected in {target_chunk_variation_output_dir}")
+
+        # Look for the chunked parquet file directly in the target_chunk_variation_output_dir first
+        actual_chunked_file_path = None
+        parquet_files_in_dir = list(pathlib.Path(target_chunk_variation_output_dir).glob("*.parquet"))
+
+        if parquet_files_in_dir:
+            # Prefer a specific name if known, e.g., '0.parquet' or 'corpus_data.parquet' or 'chunk_data.parquet'
+            # For now, take the first one found directly in the directory.
+            # If multiple parquet files could exist, this logic might need to be more specific.
+            # Common names to check for could be: "0.parquet", "corpus_data.parquet", "chunk_data.parquet"
+            preferred_names = ["0.parquet", "corpus_data.parquet", "chunk_data.parquet"]
+            for name in preferred_names:
+                potential_path = os.path.join(target_chunk_variation_output_dir, name)
+                if os.path.exists(potential_path):
+                    actual_chunked_file_path = potential_path
+                    break
+            if not actual_chunked_file_path:
+                 actual_chunked_file_path = str(parquet_files_in_dir[0]) # Fallback to first found .parquet
+            logger.info(f"Task {self.request.id}: Found chunked output file directly: {actual_chunked_file_path}")
+        else:
+            # If not found directly, check common subdirectories as a fallback (original logic)
+            # This might be needed if some chunkers *do* create subdirectories like "0"
+            logger.warning(f"Task {self.request.id}: No .parquet files found directly in {target_chunk_variation_output_dir}. Checking subdirectories.")
+            chunk_output_subdirs = [d for d in os.listdir(target_chunk_variation_output_dir) if os.path.isdir(os.path.join(target_chunk_variation_output_dir, d))]
+            if chunk_output_subdirs:
+                first_subdir_path = os.path.join(target_chunk_variation_output_dir, chunk_output_subdirs[0])
+                parquet_files_in_subdir = list(pathlib.Path(first_subdir_path).glob("*.parquet"))
+                if parquet_files_in_subdir:
+                    actual_chunked_file_path = str(parquet_files_in_subdir[0])
+                    logger.info(f"Task {self.request.id}: Found chunked output file in subdirectory: {actual_chunked_file_path}")
+                else:
+                    logger.warning(f"Task {self.request.id}: No .parquet files found in chunker output subdirectory {first_subdir_path}. Found: {os.listdir(first_subdir_path) if os.path.exists(first_subdir_path) else 'Subdirectory does not exist or is empty'}")
+            else:
+                logger.warning(f"Task {self.request.id}: No subdirectories containing .parquet files found in {target_chunk_variation_output_dir}. Contents: {os.listdir(target_chunk_variation_output_dir)}")
+
+        if not actual_chunked_file_path:
+            found_files_log = "No files found."
+            if os.path.exists(target_chunk_variation_output_dir):
+                found_files_log = f"Found files: {os.listdir(target_chunk_variation_output_dir)}"
+            error_msg = f"Task {self.request.id}: Could not determine primary chunked output .parquet file in {target_chunk_variation_output_dir} or its subdirectories. {found_files_log}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+
+        return {
+            "status": "success",
+            "chunker_variation_output_dir": target_chunk_variation_output_dir,
+            "chunked_file_path": actual_chunked_file_path
+        }
+    except Exception as e:
+        logger.error(f"Task {self.request.id}: Error in chunk_data_variation_task for output {target_chunk_variation_output_dir}: {str(e)}", exc_info=True)
+        raise
+
+@shared_task(bind=True)
+def finalize_chunking_variation_task(self, parent_task_result: dict, *args, chunk_variation_metadata_path_str: str):
+    """
+    Celery task to finalize chunking variation metadata upon successful completion.
+    """
+    load_dotenv(ENV_FILEPATH)
+    logger.info(f"Task {self.request.id}: Finalizing chunking variation. Parent result: {parent_task_result}. Metadata: {chunk_variation_metadata_path_str}")
+    try:
+        with open(chunk_variation_metadata_path_str, 'r+') as f:
+            metadata = json.load(f)
+            metadata["status"] = "completed"
+            metadata["chunked_file_path"] = parent_task_result.get("chunked_file_path")
+            metadata["output_dir"] = parent_task_result.get("chunker_variation_output_dir") # Ensure this is also updated if it can change
+            metadata["updated_at"] = datetime.utcnow().isoformat()
+            f.seek(0)
+            json.dump(metadata, f, indent=4)
+            f.truncate()
+        logger.info(f"Task {self.request.id}: Successfully updated chunking metadata at {chunk_variation_metadata_path_str} to completed.")
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Task {self.request.id}: Error finalizing chunking metadata at {chunk_variation_metadata_path_str}: {str(e)}", exc_info=True)
+        raise
+
+@shared_task(bind=True)
+def handle_chunking_failure_task(self, *args, chunk_variation_metadata_path_str: str):
+    """
+    Celery task to update chunking variation metadata upon failure.
+    """
+    load_dotenv(ENV_FILEPATH)
+    logger.info(f"Task {self.request.id}: Handling failure for chunking variation (parent task: {self.request.parent_id}). Metadata: {chunk_variation_metadata_path_str}")
+    try:
+        with open(chunk_variation_metadata_path_str, 'r+') as f:
+            metadata = json.load(f)
+            metadata["status"] = "failed"
+            metadata["chunked_file_path"] = None
+            metadata["updated_at"] = datetime.utcnow().isoformat()
+            f.seek(0)
+            json.dump(metadata, f, indent=4)
+            f.truncate()
+        logger.info(f"Task {self.request.id}: Successfully updated chunking metadata at {chunk_variation_metadata_path_str} to failed.")
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Task {self.request.id}: Error updating chunking metadata to failed at {chunk_variation_metadata_path_str}: {str(e)}", exc_info=True)
+        raise
