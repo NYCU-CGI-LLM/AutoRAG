@@ -22,7 +22,7 @@ from .parse_variations import (
 from .knowledge_bases import _get_kb_dir # For top-level KB check
 
 router = APIRouter(
-    prefix="/knowledge-bases/{kb_id}/parse-variations/{parse_variation_id}/chunk-variations",
+    prefix="/chunk-variations/{kb_id}/{parse_variation_id}",
     tags=["Chunk Variations"]
 )
 
