@@ -8,7 +8,7 @@ from .knowledge_base import (
     VariationSummary,
 )
 from .query import QueryRequest, QueryResponse, RetrievedDocument
-from .task_schemas import ReverseRequest, TaskResponse as CeleryTaskResponse
+from .task import ReverseRequest, TaskResponse as CeleryTaskResponse
 from .variation import (
     BM25Options,
     EmbeddingModelConfig,
@@ -19,10 +19,27 @@ from .variation import (
     VariationCreate,
     Variation,
 )
+
 from .parsing_variation import (
     ParsingVariationBase,
     ParsingVariationCreate,
     ParsingVariation
+)
+
+from .chunking_variation import (
+    ChunkingVariationBase,
+    ChunkingVariationCreate,
+    ChunkingVariation,
+)
+
+from .rag import (
+    RetrieveRequest,
+    RetrieveResponse,
+    GenerateRequest,
+    GenerateResponse,
+    RagRequest,
+    RagResponse,
+    RetrievedPassage,
 )
 
 __all__ = [
@@ -54,4 +71,14 @@ __all__ = [
     "ParsingVariationBase",
     "ParsingVariationCreate",
     "ParsingVariation",
+    "ChunkingVariationBase",
+    "ChunkingVariationCreate",
+    "ChunkingVariation",
+    "RetrieveRequest",
+    "RetrieveResponse",
+    "GenerateRequest",
+    "GenerateResponse",
+    "RagRequest",
+    "RagResponse",
+    "RetrievedPassage",
 ]

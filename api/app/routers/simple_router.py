@@ -3,7 +3,7 @@ from celery.result import AsyncResult
 
 from app.celery_app import app as celery_app # Import the Celery app instance
 from app.tasks.simple_tasks import reverse_string_task
-from app.schemas.task_schemas import ReverseRequest, TaskResponse
+from app.schemas.task import ReverseRequest, TaskResponse
 
 router = APIRouter(
     prefix="/utils",

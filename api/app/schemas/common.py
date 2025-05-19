@@ -47,3 +47,6 @@ class TaskStatus(OrmBase):
     progress: Optional[float] = 0.0
     message: Optional[str] = None
     result: Optional[Any] = None
+
+class VersionResponse(BaseModel):
+    version: str

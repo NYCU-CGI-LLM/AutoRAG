@@ -11,7 +11,8 @@ from app.routers import (
     knowledge_bases,
     chunk_variations,
     parse_variations,
-    simple_router
+    simple_router,
+    rag
     # tasks, # Assuming you might want to use this later
 )
 
@@ -36,6 +37,7 @@ app.include_router(auth.router)
 app.include_router(knowledge_bases.router)
 app.include_router(parse_variations.router)
 app.include_router(chunk_variations.router)
+app.include_router(rag.router)
 app.include_router(simple_router.router)
 # app.include_router(query.router) # This was previously commented out, keeping as is
 # app.include_router(tasks.router) # This was previously commented out, keeping as is
