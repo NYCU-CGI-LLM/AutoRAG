@@ -181,6 +181,7 @@ def get_support_modules(module_name: str) -> Callable:
 		"Vllm": ("autorag.nodes.generator", "Vllm"),
 		"OpenAILLM": ("autorag.nodes.generator", "OpenAILLM"),
 		"VllmAPI": ("autorag.nodes.generator", "VllmAPI"),
+		"CoAGenerator": ("autorag.nodes.generator", "CoAGenerator"),
 	}
 	return dynamically_find_function(module_name, support_modules)
 
