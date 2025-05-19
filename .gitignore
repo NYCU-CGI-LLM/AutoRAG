@@ -167,3 +167,7 @@ test_projects
 
 # Visual Studio Code
 .vscode/
+
+
+api/data/
+api/temp/

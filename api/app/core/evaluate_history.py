@@ -7,7 +7,7 @@ from typing import List
 
 import pandas as pd
 
-from src.schema import TrialConfig
+from autorag_cgi.api.app.schemas._schema import TrialConfig
 
 
 def get_new_trial_dir(

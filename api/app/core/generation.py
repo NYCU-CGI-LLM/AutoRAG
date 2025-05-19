@@ -1,32 +1,11 @@
 import os
-import subprocess
 
 import pandas as pd
 from autorag import generator_models
-from autorag.chunker import Chunker
 from autorag.data.qa.schema import QA
-from autorag.evaluator import Evaluator
-from autorag.parser import Parser
-from autorag.validator import Validator
 
-from src.qa_create import default_create, fast_create, advanced_create
-from src.schema import QACreationRequest
-
-
-def run_parser_start_parsing(data_path_glob, project_dir, yaml_path, all_files: bool):
-    # Import Parser here if it's defined in another module
-    parser = Parser(data_path_glob=data_path_glob, project_dir=project_dir)
-    print(
-        f"Parser started with data_path_glob: {data_path_glob}, project_dir: {project_dir}, yaml_path: {yaml_path}"
-    )
-    parser.start_parsing(yaml_path, all_files=all_files)
-    print("Parser completed")
-
-
-def run_chunker_start_chunking(raw_path, project_dir, yaml_path):
-    # Import Parser here if it's defined in another module
-    chunker = Chunker.from_parquet(raw_path, project_dir=project_dir)
-    chunker.start_chunking(yaml_path)
+from .qa_create import default_create, fast_create, advanced_create
+from app.schemas._schema import QACreationRequest
 
 
 def run_qa_creation(
@@ -89,45 +68,4 @@ def run_qa_creation(
     qa.to_parquet(
         os.path.join(dataset_dir, f"{qa_creation_request.name}.parquet"),
         corpus_filepath,
-    )
-
-
-def run_start_trial(
-    qa_path: str,
-    corpus_path: str,
-    project_dir: str,
-    yaml_path: str,
-    skip_validation: bool = True,
-    full_ingest: bool = True,
-):
-    evaluator = Evaluator(qa_path, corpus_path, project_dir=project_dir)
-    evaluator.start_trial(
-        yaml_path, skip_validation=skip_validation, full_ingest=full_ingest
-    )
-
-
-def run_validate(qa_path: str, corpus_path: str, yaml_path: str):
-    validator = Validator(qa_path, corpus_path)
-    validator.validate(yaml_path)
-
-
-def run_dashboard(trial_dir: str):
-    process = subprocess.Popen(
-        ["autorag", "dashboard", "--trial_dir", trial_dir], start_new_session=True
-    )
-    return process.pid
-
-
-def run_chat(trial_dir: str):
-    process = subprocess.Popen(
-        ["autorag", "run_web", "--trial_path", trial_dir], start_new_session=True
-    )
-    return process.pid
-
-
-def run_api_server(trial_dir: str):
-    process = subprocess.Popen(
-        ["autorag", "run_api", "--port", "8100", "--trial_dir", trial_dir],
-        start_new_session=True,
-    )
-    return process.pid
+    ) 
