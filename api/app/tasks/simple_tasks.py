@@ -1,6 +1,5 @@
 import time
 from celery import shared_task
-from app.celery_app import app # Corrected import for the Celery app instance
 
 @shared_task(bind=True)
 def reverse_string_task(self, text: str) -> str:
