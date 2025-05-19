@@ -18,8 +18,8 @@ from app.tasks.data_processing_tasks import (
 from .knowledge_bases import _get_kb_dir, _get_kb_raw_data_dir, _get_kb_parsed_data_dir
 
 router = APIRouter(
-    prefix="/knowledge-bases/{kb_id}/parsed-data/variations",
-    tags=["Parsed Data Variations"],
+    prefix="/knowledge-bases/{kb_id}/parse-variations",
+    tags=["Parse Variations"],
 )
 
 # Define the base directory for parser configuration files

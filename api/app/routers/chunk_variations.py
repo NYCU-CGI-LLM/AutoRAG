@@ -15,13 +15,16 @@ from app.tasks.data_processing_tasks import (
     _DEFAULT_CHUNKER_YAML_PATH # For default YAML path
 )
 # Assuming parsing variation helpers can be reused or adapted for path context
-from .parsed_data_variations import (
+from .parse_variations import (
     _get_kb_parse_variation_dir,
     _read_parse_variation_metadata
 )
 from .knowledge_bases import _get_kb_dir # For top-level KB check
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/knowledge-bases/{kb_id}/parsed-data/{parse_variation_id}/chunk-variations",
+    tags=["Chunking Variations"]
+)
 
 # Define the base directory for chunker configuration files
 # This path is relative to the current file's location (routers directory)
@@ -70,10 +73,9 @@ async def _write_chunk_variation_metadata(metadata: ChunkingVariation):
 # --- API Endpoints for Chunking Variations ---
 
 @router.post(
-    "/knowledge-bases/{kb_id}/parsed-data/{parse_variation_id}/chunk-variations/", 
-    response_model=ChunkingVariation, 
+    "/",
+    response_model=ChunkingVariation,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Chunking Variations"]
 )
 async def create_chunk_variation(
     kb_id: UUID,
@@ -159,9 +161,8 @@ async def create_chunk_variation(
     return chunk_variation_metadata
 
 @router.get(
-    "/knowledge-bases/{kb_id}/parsed-data/{parse_variation_id}/chunk-variations/", 
+    "/",
     response_model=List[ChunkingVariation],
-    tags=["Chunking Variations"]
 )
 async def list_chunk_variations(kb_id: UUID, parse_variation_id: UUID):
     # Ensure parse variation exists
@@ -189,9 +190,8 @@ async def list_chunk_variations(kb_id: UUID, parse_variation_id: UUID):
     return variations
 
 @router.get(
-    "/knowledge-bases/{kb_id}/parsed-data/{parse_variation_id}/chunk-variations/{chunk_variation_id}", 
+    "/{chunk_variation_id}",
     response_model=ChunkingVariation,
-    tags=["Chunking Variations"]
 )
 async def get_chunk_variation(kb_id: UUID, parse_variation_id: UUID, chunk_variation_id: UUID):
     metadata = await _read_chunk_variation_metadata(kb_id, parse_variation_id, chunk_variation_id)
@@ -210,9 +210,8 @@ async def get_chunk_variation(kb_id: UUID, parse_variation_id: UUID, chunk_varia
     return metadata
 
 @router.delete(
-    "/knowledge-bases/{kb_id}/parsed-data/{parse_variation_id}/chunk-variations/{chunk_variation_id}", 
+    "/{chunk_variation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Chunking Variations"]
 )
 async def delete_chunk_variation(kb_id: UUID, parse_variation_id: UUID, chunk_variation_id: UUID):
     variation_dir = await _get_chunk_variation_dir(kb_id, parse_variation_id, chunk_variation_id)
