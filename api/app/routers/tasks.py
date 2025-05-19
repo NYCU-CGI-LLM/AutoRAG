@@ -43,4 +43,4 @@ async def get_task_status(task_id: str):
         status=TaskStatusEnum.PENDING,
         message="Generic task status: Status unknown or pending. Check resource-specific status endpoints.",
         progress=0
-    ) 
+    )
