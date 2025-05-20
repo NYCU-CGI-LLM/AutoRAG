@@ -22,7 +22,7 @@ from .parse_variations import (
 from .knowledge_bases import _get_kb_dir # For top-level KB check
 
 router = APIRouter(
-    prefix="/chunk-variations/{KB_ID}/{PARSE_ID}",
+    prefix="/chunk-variations/{kb_id}/{parse_id}",
     tags=["Chunk Variations"]
 )
 
@@ -34,24 +34,24 @@ CHUNKER_CONFIGS_BASE_DIR = os.path.normpath(
 
 # --- Helper Functions for Chunking Variations ---
 
-async def _get_parse_var_chunk_variations_base_dir(KB_ID: UUID, PARSE_ID: UUID) -> str:
+async def _get_parse_var_chunk_variations_base_dir(kb_id: UUID, parse_id: UUID) -> str:
     """Base directory to store all chunking variations under the corresponding parse variation."""
     # Use the parse variation directory under variations
-    parse_var_dir = await _get_kb_parse_variation_dir(KB_ID, PARSE_ID)
+    parse_var_dir = await _get_kb_parse_variation_dir(kb_id, parse_id)
     return parse_var_dir
 
-async def _get_chunk_variation_dir(KB_ID: UUID, PARSE_ID: UUID, CHUNK_ID: UUID) -> str:
+async def _get_chunk_variation_dir(kb_id: UUID, parse_id: UUID, chunk_id: UUID) -> str:
     """Specific directory for a single chunking variation."""
-    base_chunk_vars_dir = await _get_parse_var_chunk_variations_base_dir(KB_ID, PARSE_ID)
+    base_chunk_vars_dir = await _get_parse_var_chunk_variations_base_dir(kb_id, parse_id)
     # Create a directory per chunk variation under the parse variation folder
-    return os.path.join(base_chunk_vars_dir, str(CHUNK_ID))
+    return os.path.join(base_chunk_vars_dir, str(chunk_id))
 
-async def _get_chunk_variation_metadata_path(KB_ID: UUID, PARSE_ID: UUID, CHUNK_ID: UUID) -> str:
-    chunk_var_dir = await _get_chunk_variation_dir(KB_ID, PARSE_ID, CHUNK_ID)
+async def _get_chunk_variation_metadata_path(kb_id: UUID, parse_id: UUID, chunk_id: UUID) -> str:
+    chunk_var_dir = await _get_chunk_variation_dir(kb_id, parse_id, chunk_id)
     return os.path.join(chunk_var_dir, "chunk_variation_metadata.json")
 
-async def _read_chunk_variation_metadata(KB_ID: UUID, PARSE_ID: UUID, CHUNK_ID: UUID) -> Optional[ChunkingVariation]:
-    metadata_path = await _get_chunk_variation_metadata_path(KB_ID, PARSE_ID, CHUNK_ID)
+async def _read_chunk_variation_metadata(kb_id: UUID, parse_id: UUID, chunk_id: UUID) -> Optional[ChunkingVariation]:
+    metadata_path = await _get_chunk_variation_metadata_path(kb_id, parse_id, chunk_id)
     if not os.path.exists(metadata_path):
         return None
     try:
@@ -59,7 +59,7 @@ async def _read_chunk_variation_metadata(KB_ID: UUID, PARSE_ID: UUID, CHUNK_ID: 
             data = json.load(f)
         return ChunkingVariation(**data)
     except (json.JSONDecodeError, TypeError) as e:
-        print(f"Error reading or parsing chunk_variation_metadata.json for CV {CHUNK_ID} in PV {PARSE_ID} KB {KB_ID}: {e}")
+        print(f"Error reading or parsing chunk_variation_metadata.json for CV {chunk_id} in PV {parse_id} KB {kb_id}: {e}")
         return None
 
 async def _write_chunk_variation_metadata(metadata: ChunkingVariation):
@@ -80,25 +80,25 @@ async def _write_chunk_variation_metadata(metadata: ChunkingVariation):
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_chunk_variation(
-    KB_ID: UUID,
-    PARSE_ID: UUID,
+    kb_id: UUID,
+    parse_id: UUID,
     variation_create: ChunkingVariationCreate,
 ):
     # Validate Knowledge Base existence
-    kb_dir_check = await _get_kb_dir(KB_ID)
+    kb_dir_check = await _get_kb_dir(kb_id)
     if not os.path.isdir(kb_dir_check):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
 
     # Validate Parsing Variation existence and get its output path
-    parse_variation_metadata = await _read_parse_variation_metadata(KB_ID, PARSE_ID)
+    parse_variation_metadata = await _read_parse_variation_metadata(kb_id, parse_id)
     if not parse_variation_metadata:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Parsing variation with ID {PARSE_ID} not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Parsing variation with ID {parse_id} not found.")
     if parse_variation_metadata.status != "completed" or not parse_variation_metadata.parsed_file_path:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Parsing variation {PARSE_ID} is not completed or has no output file.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Parsing variation {parse_id} is not completed or has no output file.")
     
     parsed_file_to_chunk = parse_variation_metadata.parsed_file_path
     if not os.path.isfile(parsed_file_to_chunk):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Parsed file {parsed_file_to_chunk} for variation {PARSE_ID} not found on disk.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Parsed file {parsed_file_to_chunk} for variation {parse_id} not found on disk.")
 
     # Determine the chunker YAML path
     chunker_yaml_to_use = None
@@ -116,7 +116,7 @@ async def create_chunk_variation(
         default_yaml_path = os.path.join(CHUNKER_CONFIGS_BASE_DIR, "default_chunk.yaml")
         if not os.path.isfile(default_yaml_path):
             # Fallback to system default if no default_chunk.yaml in config dir
-            logger.warning(f"default_chunk.yaml not found in {CHUNKER_CONFIGS_BASE_DIR}, attempting to use system default _DEFAULT_CHUNKER_YAML_PATH")
+            print(f"Warning: default_chunk.yaml not found in {CHUNKER_CONFIGS_BASE_DIR}, attempting to use system default _DEFAULT_CHUNKER_YAML_PATH")
             if not os.path.isfile(_DEFAULT_CHUNKER_YAML_PATH):
                  raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No chunker_config_filename provided and no default_chunk.yaml or system default chunker YAML found.")
             chunker_yaml_to_use = _DEFAULT_CHUNKER_YAML_PATH
@@ -127,15 +127,15 @@ async def create_chunk_variation(
             chunker_yaml_to_use = default_yaml_path
 
     chunk_variation_id = uuid4()
-    chunk_variation_output_dir = await _get_chunk_variation_dir(KB_ID, PARSE_ID, chunk_variation_id)
+    chunk_variation_output_dir = await _get_chunk_variation_dir(kb_id, parse_id, chunk_variation_id)
     os.makedirs(chunk_variation_output_dir, exist_ok=True)
 
-    chunk_metadata_path = await _get_chunk_variation_metadata_path(KB_ID, PARSE_ID, chunk_variation_id)
+    chunk_metadata_path = await _get_chunk_variation_metadata_path(kb_id, parse_id, chunk_variation_id)
 
     chunk_variation_metadata = ChunkingVariation(
         id=chunk_variation_id,
-        kb_id=KB_ID,
-        parse_variation_id=PARSE_ID,
+        kb_id=kb_id,
+        parse_variation_id=parse_id,
         variation_name=variation_create.variation_name if variation_create.variation_name else f"Chunk-{chunk_variation_id.hex[:8]}",
         description=variation_create.description,
         chunker_config_filename=config_filename_to_store,
@@ -145,7 +145,7 @@ async def create_chunk_variation(
     await _write_chunk_variation_metadata(chunk_variation_metadata)
 
     task_signature = chunk_data_variation_task.s(
-        kb_id=str(KB_ID),
+        kb_id=str(kb_id),
         parsed_file_path=parsed_file_to_chunk,
         target_chunk_variation_output_dir=chunk_variation_output_dir,
         chunker_yaml_path=chunker_yaml_to_use
@@ -166,17 +166,17 @@ async def create_chunk_variation(
     "/",
     response_model=List[ChunkingVariation],
 )
-async def list_chunk_variations(KB_ID: UUID, PARSE_ID: UUID):
+async def list_chunk_variations(kb_id: UUID, parse_id: UUID):
     # Ensure parse variation exists
-    parse_var_dir = await _get_kb_parse_variation_dir(KB_ID, PARSE_ID)
+    parse_var_dir = await _get_kb_parse_variation_dir(kb_id, parse_id)
     if not os.path.isdir(parse_var_dir):
         # Further check if KB itself exists for a more accurate error
-        kb_dir_check = await _get_kb_dir(KB_ID)
+        kb_dir_check = await _get_kb_dir(kb_id)
         if not os.path.isdir(kb_dir_check):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parsing variation not found, so cannot list its chunking variations.")
 
-    chunk_vars_base_dir = await _get_parse_var_chunk_variations_base_dir(KB_ID, PARSE_ID)
+    chunk_vars_base_dir = await _get_parse_var_chunk_variations_base_dir(kb_id, parse_id)
     if not os.path.isdir(chunk_vars_base_dir):
         return [] # No chunking variations created yet for this KB
 
@@ -184,55 +184,55 @@ async def list_chunk_variations(KB_ID: UUID, PARSE_ID: UUID):
     for item_name in os.listdir(chunk_vars_base_dir):
         try:
             variation_uuid = UUID(item_name)
-            metadata = await _read_chunk_variation_metadata(KB_ID, PARSE_ID, variation_uuid)
-            if metadata and metadata.parse_variation_id == PARSE_ID:
+            metadata = await _read_chunk_variation_metadata(kb_id, parse_id, variation_uuid)
+            if metadata and metadata.parse_variation_id == parse_id:
                 variations.append(metadata)
         except ValueError:
             pass # Not a UUID named directory
     return variations
 
 @router.get(
-    "/{chunk_variation_id}",
+    "/{chunk_id}",
     response_model=ChunkingVariation,
 )
-async def get_chunk_variation(KB_ID: UUID, PARSE_ID: UUID, CHUNK_ID: UUID):
-    metadata = await _read_chunk_variation_metadata(KB_ID, PARSE_ID, CHUNK_ID)
+async def get_chunk_variation(kb_id: UUID, parse_id: UUID, chunk_id: UUID):
+    metadata = await _read_chunk_variation_metadata(kb_id, parse_id, chunk_id)
     if not metadata:
         # Check if parent dirs exist for better error messages
-        chunk_var_dir = await _get_chunk_variation_dir(KB_ID, PARSE_ID, CHUNK_ID)
+        chunk_var_dir = await _get_chunk_variation_dir(kb_id, parse_id, chunk_id)
         if not os.path.isdir(chunk_var_dir):
-            parse_var_dir = await _get_kb_parse_variation_dir(KB_ID, PARSE_ID)
+            parse_var_dir = await _get_kb_parse_variation_dir(kb_id, parse_id)
             if not os.path.isdir(parse_var_dir):
-                kb_dir_check = await _get_kb_dir(KB_ID)
+                kb_dir_check = await _get_kb_dir(kb_id)
                 if not os.path.isdir(kb_dir_check):
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parsing variation not found")
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation with ID {CHUNK_ID} not found.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Metadata for chunking variation {CHUNK_ID} not found, but its directory exists.")
-    if metadata.parse_variation_id != PARSE_ID:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation {CHUNK_ID} does not belong to parsing variation {PARSE_ID}.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation with ID {chunk_id} not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Metadata for chunking variation {chunk_id} not found, but its directory exists.")
+    if metadata.parse_variation_id != parse_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation {chunk_id} does not belong to parsing variation {parse_id}.")
     return metadata
 
 @router.delete(
-    "/{chunk_variation_id}",
+    "/{chunk_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_chunk_variation(KB_ID: UUID, PARSE_ID: UUID, CHUNK_ID: UUID):
-    variation_dir = await _get_chunk_variation_dir(KB_ID, PARSE_ID, CHUNK_ID)
+async def delete_chunk_variation(kb_id: UUID, parse_id: UUID, chunk_id: UUID):
+    variation_dir = await _get_chunk_variation_dir(kb_id, parse_id, chunk_id)
     if not os.path.isdir(variation_dir):
         # Add checks for parent existence like in GET to provide better context
-        parse_var_dir = await _get_kb_parse_variation_dir(KB_ID, PARSE_ID)
+        parse_var_dir = await _get_kb_parse_variation_dir(kb_id, parse_id)
         if not os.path.isdir(parse_var_dir):
-            kb_dir_check = await _get_kb_dir(KB_ID)
+            kb_dir_check = await _get_kb_dir(kb_id)
             if not os.path.isdir(kb_dir_check):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parsing variation not found")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation with ID {CHUNK_ID} not found.")
-    metadata = await _read_chunk_variation_metadata(KB_ID, PARSE_ID, CHUNK_ID)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation with ID {chunk_id} not found.")
+    metadata = await _read_chunk_variation_metadata(kb_id, parse_id, chunk_id)
     if not metadata:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Metadata for chunking variation {CHUNK_ID} not found.")
-    if metadata.parse_variation_id != PARSE_ID:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation {CHUNK_ID} does not belong to parsing variation {PARSE_ID}.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Metadata for chunking variation {chunk_id} not found.")
+    if metadata.parse_variation_id != parse_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunking variation {chunk_id} does not belong to parsing variation {parse_id}.")
     try:
         shutil.rmtree(variation_dir)
     except OSError as e:

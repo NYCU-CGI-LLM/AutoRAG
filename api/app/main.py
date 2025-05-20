@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__) # Get logger for main.py
 
 app = FastAPI(
     title=settings.app_name,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    swagger_ui_parameters={
+        "docExpansion": "none"
+    },
 )
 
 app.add_middleware(

@@ -33,15 +33,15 @@ async def _get_kb_variations_dir(KB_ID: UUID) -> str:
     # Base directory for all variations (parse -> chunk -> index)
     return os.path.join(await _get_kb_dir(KB_ID), "variations")
 
-async def _get_kb_metadata_path(KB_ID: UUID) -> str:
-    return os.path.join(await _get_kb_dir(KB_ID), "metadata.json")
+async def _get_kb_metadata_path(kb_id: UUID) -> str:
+    return os.path.join(await _get_kb_dir(kb_id), "metadata.json")
 
-async def _get_kb_files_metadata_path(KB_ID: UUID) -> str:
-    raw_data_dir = await _get_kb_raw_data_dir(KB_ID)
+async def _get_kb_files_metadata_path(kb_id: UUID) -> str:
+    raw_data_dir = await _get_kb_raw_data_dir(kb_id)
     return os.path.join(raw_data_dir, "files_metadata.json")
 
-async def _read_files_metadata(KB_ID: UUID) -> List[FileInfo]:
-    metadata_path = await _get_kb_files_metadata_path(KB_ID)
+async def _read_files_metadata(kb_id: UUID) -> List[FileInfo]:
+    metadata_path = await _get_kb_files_metadata_path(kb_id)
     if not os.path.exists(metadata_path):
         return []
     try:
@@ -49,19 +49,19 @@ async def _read_files_metadata(KB_ID: UUID) -> List[FileInfo]:
             data = json.load(f)
         return [FileInfo(**item) for item in data] # Validate with model
     except (json.JSONDecodeError, TypeError) as e: # TypeError for Pydantic validation issues
-        print(f"Error reading or parsing files_metadata.json for KB {KB_ID}: {e}") # Replace with logging
+        print(f"Error reading or parsing files_metadata.json for KB {kb_id}: {e}") # Replace with logging
         return [] # Or raise an error
 
-async def _write_files_metadata(KB_ID: UUID, files_info: List[FileInfo]):
-    metadata_path = await _get_kb_files_metadata_path(KB_ID)
-    raw_data_dir = await _get_kb_raw_data_dir(KB_ID)
+async def _write_files_metadata(kb_id: UUID, files_info: List[FileInfo]):
+    metadata_path = await _get_kb_files_metadata_path(kb_id)
+    raw_data_dir = await _get_kb_raw_data_dir(kb_id)
     os.makedirs(raw_data_dir, exist_ok=True) # Ensure raw_data_dir exists
     try:
         with open(metadata_path, 'w') as f:
             # Use model_dump to ensure datetime is serialized correctly if not using mode='json' everywhere
             json.dump([item.model_dump(mode='json') for item in files_info], f, indent=4)
     except Exception as e:
-        print(f"Error writing files_metadata.json for KB {KB_ID}: {e}") # Replace with logging
+        print(f"Error writing files_metadata.json for KB {kb_id}: {e}") # Replace with logging
         # Consider how to handle write failures (e.g., backup, retry, raise)
 
 # --- Endpoints ---
@@ -99,8 +99,8 @@ async def list_knowledge_bases():
         item_path = os.path.join(BASE_KB_DIR, item_name)
         if os.path.isdir(item_path):
             try:
-                kb_id = UUID(item_name)
-                metadata_path = await _get_kb_metadata_path(kb_id)
+                kb_id_uuid = UUID(item_name) # Renamed variable to avoid conflict
+                metadata_path = await _get_kb_metadata_path(kb_id_uuid)
                 if os.path.exists(metadata_path):
                     with open(metadata_path, 'r') as f:
                         data = json.load(f)
@@ -108,8 +108,8 @@ async def list_knowledge_bases():
                 else:
                     # Fallback if metadata.json is missing (should ideally not happen for KBs created via API)
                     # Or log a warning/error
-                    print(f"Warning: metadata.json not found for KB ID {kb_id}")
-                    # kbs.append(KnowledgeBase(id=kb_id, name=item_name, description="Metadata missing"))
+                    print(f"Warning: metadata.json not found for KB ID {kb_id_uuid}")
+                    # kbs.append(KnowledgeBase(id=kb_id_uuid, name=item_name, description="Metadata missing"))
             except json.JSONDecodeError:
                 print(f"Warning: Error decoding metadata.json for KB ID {item_name}")
                 pass
@@ -118,14 +118,14 @@ async def list_knowledge_bases():
                 pass 
     return kbs
 
-@router.get("/{KB_ID}", response_model=KnowledgeBaseDetail)
-async def get_knowledge_base(KB_ID: UUID):
+@router.get("/{kb_id}", response_model=KnowledgeBaseDetail)
+async def get_knowledge_base(kb_id: UUID):
     """Get detailed information about a specific knowledge base."""
-    kb_dir = await _get_kb_dir(KB_ID)
+    kb_dir = await _get_kb_dir(kb_id)
     if not os.path.isdir(kb_dir):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
     
-    metadata_path = await _get_kb_metadata_path(KB_ID)
+    metadata_path = await _get_kb_metadata_path(kb_id)
     if not os.path.exists(metadata_path):
         # This case implies an orphaned directory or an error during creation
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base metadata not found.")
@@ -139,10 +139,11 @@ async def get_knowledge_base(KB_ID: UUID):
     except Exception as e: # Catch any other Pydantic validation errors etc.
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error processing knowledge base metadata: {e}")
     
-    raw_data_dir = await _get_kb_raw_data_dir(KB_ID)
+    raw_file_count = 0 # Initialize raw_file_count
+    raw_data_dir = await _get_kb_raw_data_dir(kb_id)
     if os.path.exists(raw_data_dir):
         # Count only actual data files, exclude metadata file
-        metadata_filename = os.path.basename(await _get_kb_files_metadata_path(KB_ID))
+        metadata_filename = os.path.basename(await _get_kb_files_metadata_path(kb_id))
         raw_file_count = len([
             name for name in os.listdir(raw_data_dir)
             if os.path.isfile(os.path.join(raw_data_dir, name))
@@ -159,10 +160,10 @@ async def get_knowledge_base(KB_ID: UUID):
         variation_summaries=variation_summaries # Uncommented
     )
 
-@router.delete("/{KB_ID}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_knowledge_base(KB_ID: UUID):
+@router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_knowledge_base(kb_id: UUID):
     """Delete an entire knowledge base."""
-    kb_dir = await _get_kb_dir(KB_ID)
+    kb_dir = await _get_kb_dir(kb_id)
     if not os.path.isdir(kb_dir):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
     
@@ -173,17 +174,17 @@ async def delete_knowledge_base(KB_ID: UUID):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete knowledge base: {e}")
     return
 
-@router.post("/{KB_ID}/files", response_model=List[FileInfo])
-async def upload_knowledge_base_files(KB_ID: UUID, files: List[UploadFile] = File(...)):
+@router.post("/{kb_id}/files", response_model=List[FileInfo])
+async def upload_knowledge_base_files(kb_id: UUID, files: List[UploadFile] = File(...)):
     """Upload one or more raw data files to a knowledge base."""
-    raw_data_dir = await _get_kb_raw_data_dir(KB_ID)
+    raw_data_dir = await _get_kb_raw_data_dir(kb_id)
     if not os.path.isdir(raw_data_dir):
-        kb_dir = await _get_kb_dir(KB_ID)
+        kb_dir = await _get_kb_dir(kb_id)
         if not os.path.isdir(kb_dir):
              raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
         os.makedirs(raw_data_dir, exist_ok=True)
 
-    current_files_metadata = await _read_files_metadata(KB_ID)
+    current_files_metadata = await _read_files_metadata(kb_id)
     # Create a lookup for existing files to handle overwrites or updates if necessary
     existing_files_map = {fi.name: fi for fi in current_files_metadata}
 
@@ -208,35 +209,35 @@ async def upload_knowledge_base_files(KB_ID: UUID, files: List[UploadFile] = Fil
             
     # Update the full list of metadata
     updated_metadata_list = list(existing_files_map.values())
-    await _write_files_metadata(KB_ID, updated_metadata_list)
+    await _write_files_metadata(kb_id, updated_metadata_list)
     
     return newly_uploaded_files_info # Return info only for files processed in this request
 
-@router.get("/{KB_ID}/files", response_model=List[FileInfo])
-async def list_knowledge_base_files(KB_ID: UUID):
+@router.get("/{kb_id}/files", response_model=List[FileInfo])
+async def list_knowledge_base_files(kb_id: UUID):
     """List all raw files within a specific knowledge base."""
     # Ensure KB exists and raw_data directory is there or can be accessed
-    raw_data_dir = await _get_kb_raw_data_dir(KB_ID)
+    raw_data_dir = await _get_kb_raw_data_dir(kb_id)
     if not os.path.isdir(raw_data_dir):
         # Check if the main KB directory exists. If not, KB itself is not found.
-        kb_dir = await _get_kb_dir(KB_ID)
+        kb_dir = await _get_kb_dir(kb_id)
         if not os.path.isdir(kb_dir):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge Base not found")
         # KB exists, but no raw_data dir might mean no files yet, so return empty list.
         return [] 
 
-    files_info = await _read_files_metadata(KB_ID)
+    files_info = await _read_files_metadata(kb_id)
     # Optional: You could add a step here to reconcile with actual files on disk
     # e.g., remove metadata for files that no longer exist, or add metadata for untracked files (though this is less common for API-managed uploads)
     return files_info
 
-@router.delete("/{KB_ID}/files/{file_name}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_knowledge_base_file(KB_ID: UUID, file_name: str):
+@router.delete("/{kb_id}/files/{file_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_knowledge_base_file(kb_id: UUID, file_name: str):
     """Delete a specific raw file from a knowledge base."""
-    if ".." in file_name or "/" in file_name or "\\" in file_name:
+    if ".." in file_name or "/" in file_name or "\\" in file_name: # Corrected escaping for backslash
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file name.")
 
-    file_path = os.path.join(await _get_kb_raw_data_dir(KB_ID), file_name)
+    file_path = os.path.join(await _get_kb_raw_data_dir(kb_id), file_name)
 
     if not os.path.isfile(file_path):
         # Even if file not on disk, check if it's in metadata and remove it
@@ -250,12 +251,12 @@ async def delete_knowledge_base_file(KB_ID: UUID, file_name: str):
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete physical file: {e}")
 
     # Update metadata
-    current_files_metadata = await _read_files_metadata(KB_ID)
+    current_files_metadata = await _read_files_metadata(kb_id)
     updated_metadata = [fi for fi in current_files_metadata if fi.name != file_name]
 
     if len(updated_metadata) == len(current_files_metadata) and not os.path.exists(file_path):
         # File wasn't in metadata and also not on disk (already deleted or never existed properly)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File '{file_name}' not found.")
     
-    await _write_files_metadata(KB_ID, updated_metadata)
+    await _write_files_metadata(kb_id, updated_metadata)
     return
