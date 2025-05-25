@@ -8,13 +8,12 @@ from app.core.config import settings
 # Routers are now consolidated in app.routers
 from app.routers import (
     auth,
-    knowledge_bases,
-    chunk_variations,
-    parse_variations,
-    indexing_variation,
     simple_router,
-    rag
-    # tasks, # Assuming you might want to use this later
+    tasks,
+    library,
+    retriever,
+    chat,
+    evaluation
 )
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
@@ -38,14 +37,12 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(knowledge_bases.router)
-app.include_router(parse_variations.router)
-app.include_router(chunk_variations.router)
-app.include_router(indexing_variation.router)
-app.include_router(rag.router)
 app.include_router(simple_router.router)
-# app.include_router(query.router) # This was previously commented out, keeping as is
-# app.include_router(tasks.router) # This was previously commented out, keeping as is
+app.include_router(tasks.router)
+app.include_router(library.router)
+app.include_router(retriever.router)
+app.include_router(chat.router)
+app.include_router(evaluation.router)
 
 @app.get("/")
 async def root():

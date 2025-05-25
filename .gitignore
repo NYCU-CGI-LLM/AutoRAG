@@ -172,3 +172,4 @@ test_projects
 api/data/
 api/temp/
 api/.kbs/
+api/project_dir/
