@@ -5,6 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.database import create_db_and_tables
+# Import models to ensure they are registered with SQLModel
+from app.models.library import Library
+from app.models.file import File
 # Routers are now consolidated in app.routers
 from app.routers import (
     # auth,
@@ -33,6 +37,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup"""
+    logger.info("Creating database tables...")
+    create_db_and_tables()
+    logger.info("Database tables created successfully")
 
 # Include routers
 # app.include_router(auth.router)

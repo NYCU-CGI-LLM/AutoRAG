@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # database_url: str = Field(..., env="DATABASE_URL")
     secret_key: str = Field(..., env="SECRET_KEY")
     access_token_expire_minutes: int = 30
+    
+    # MinIO Configuration
+    minio_endpoint: str = Field("localhost:9000", env="MINIO_ENDPOINT")
+    minio_access_key: str = Field("minioadmin", env="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field("minioadmin", env="MINIO_SECRET_KEY")
+    minio_secure: bool = Field(False, env="MINIO_SECURE")
+    minio_bucket_name: str = Field("autorag-files", env="MINIO_BUCKET_NAME")
 
 logger = logging.getLogger(__name__)
 logger.info("Before Settings instantiation in config.py")

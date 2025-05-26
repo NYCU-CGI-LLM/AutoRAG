@@ -18,7 +18,7 @@ class Library(SQLModel, table=True):
     
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
     type: str = Field(default=LibraryTypeEnum.REGULAR, max_length=50)
-    user_id: UUID = Field(foreign_key="user.id", index=True)
+    user_id: Optional[UUID] = Field(None, index=True)
     library_name: str = Field(..., max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     created_at: datetime = Field(default_factory=datetime.utcnow)

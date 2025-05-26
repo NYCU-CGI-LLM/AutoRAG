@@ -44,9 +44,10 @@ class LibraryDetail(Library):
 class FileUploadResponse(BaseModel):
     file_id: UUID = Field(..., description="Uploaded file ID")
     file_name: str = Field(..., description="Original filename")
-    content_type: str = Field(..., description="MIME type")
-    size: int = Field(..., description="File size in bytes")
+    file_size: int = Field(..., description="File size in bytes")
+    content_type: Optional[str] = Field(None, description="MIME type")
     message: str = Field(..., description="Upload status message")
+    upload_timestamp: str = Field(..., description="Upload timestamp in ISO format")
 
 
 class LibraryUpdateRequest(BaseModel):

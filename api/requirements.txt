@@ -9,3 +9,4 @@ flower
 sqlmodel
 psycopg2-binary
 alembic
+minio
