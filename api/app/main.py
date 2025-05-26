@@ -7,13 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 # Routers are now consolidated in app.routers
 from app.routers import (
-    auth,
-    simple_router,
-    tasks,
+    # auth,
     library,
     retriever,
     chat,
-    evaluation
+    evaluation,
+    utilities
 )
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
@@ -36,13 +35,12 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router)
-app.include_router(simple_router.router)
-app.include_router(tasks.router)
+# app.include_router(auth.router)
 app.include_router(library.router)
 app.include_router(retriever.router)
 app.include_router(chat.router)
 app.include_router(evaluation.router)
+app.include_router(utilities.router)
 
 @app.get("/")
 async def root():

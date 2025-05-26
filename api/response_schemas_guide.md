@@ -92,6 +92,15 @@ This document defines what schemas to return for each HTTP status code across al
 | 415 | `ErrorResponse` | Unsupported file type |
 | 500 | `ServerErrorResponse` | Upload or server error |
 
+### GET /library/{library_id}/file
+**List files in library**
+
+| Status Code | Schema | Description |
+|-------------|--------|-------------|
+| 200 | `List[FileInfo]` | List of files (can be empty) |
+| 404 | `NotFoundErrorResponse` | Library not found |
+| 500 | `ServerErrorResponse` | Database or server error |
+
 ### DELETE /library/{library_id}
 **Delete library**
 

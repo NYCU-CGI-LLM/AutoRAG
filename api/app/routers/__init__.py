@@ -1,11 +1,9 @@
-from . import simple_router, auth, tasks, library, retriever, chat, evaluation
+from . import library, retriever, chat, evaluation, utilities
 
 __all__ = [
-    "simple_router",
-    "auth",
-    "tasks",
     "library",
     "retriever",
     "chat",
-    "evaluation"
+    "evaluation",
+    "utilities"
 ]
