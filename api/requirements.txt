@@ -6,3 +6,6 @@ celery
 python-jose
 python-multipart
 flower
+sqlmodel
+psycopg2-binary
+alembic

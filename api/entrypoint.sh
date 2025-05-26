@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Wait for database to be ready
+echo "Waiting for database to be ready..."
+sleep 5
+
+# Run database migrations
+echo "Running database migrations..."
+python run_migrations.py
+
 # Start API server with standard event loop
 uvicorn app:app --host 0.0.0.0 --port 8000 --loop asyncio --reload &
 # --reload-dir /app/api &

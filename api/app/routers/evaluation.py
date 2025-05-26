@@ -53,7 +53,7 @@ async def get_evaluation_run(eval_id: UUID):
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
-@router.put("/{eval_id}/status", response_model=Evaluation)
+@router.put("/{eval_id}/status", response_model=Evaluation, include_in_schema=False)
 async def update_evaluation_status(eval_id: UUID, status_update: EvaluationStatusUpdate):
     """
     Update evaluation status.
@@ -65,19 +65,7 @@ async def update_evaluation_status(eval_id: UUID, status_update: EvaluationStatu
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
-@router.get("/{eval_id}/metrics", response_model=EvaluationMetrics)
-async def get_evaluation_metrics(eval_id: UUID):
-    """
-    Get evaluation metrics.
-    
-    Returns detailed evaluation metrics for a completed evaluation run,
-    including precision, recall, F1 score, and custom metrics.
-    """
-    # TODO: Implement evaluation metrics retrieval logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
-
-
-@router.delete("/{eval_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{eval_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 async def delete_evaluation_run(eval_id: UUID):
     """
     Delete an evaluation run.
@@ -86,28 +74,4 @@ async def delete_evaluation_run(eval_id: UUID):
     This operation cannot be undone.
     """
     # TODO: Implement evaluation run deletion logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
-
-
-@router.post("/{eval_id}/retry", response_model=Evaluation)
-async def retry_evaluation_run(eval_id: UUID):
-    """
-    Retry a failed evaluation run.
-    
-    Restart a failed evaluation run with the same configuration.
-    This creates a new run instance with the same parameters.
-    """
-    # TODO: Implement evaluation retry logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
-
-
-@router.post("/{eval_id}/stop", response_model=Evaluation)
-async def stop_evaluation_run(eval_id: UUID):
-    """
-    Stop a running evaluation.
-    
-    Terminate a currently running evaluation run.
-    Partial results may be preserved.
-    """
-    # TODO: Implement evaluation stop logic
     raise HTTPException(status_code=501, detail="Not implemented yet") 

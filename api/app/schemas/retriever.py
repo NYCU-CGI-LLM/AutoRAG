@@ -6,8 +6,8 @@ from .common import OrmBase, IDModel, TimestampModel, TaskStatusEnum
 
 
 class RetrieverConfigBase(BaseModel):
-    name: str = Field(..., description="Retriever configuration name")
-    description: Optional[str] = Field(None, description="Configuration description")
+    name: str = Field(..., description="Retriever configuration name", max_length=100)
+    description: Optional[str] = Field(None, description="Configuration description", max_length=500)
     library_id: UUID = Field(..., description="Associated library ID")
     config: Dict[str, Any] = Field(..., description="Retriever configuration parameters")
 
@@ -36,16 +36,3 @@ class IndexingStatusUpdate(BaseModel):
     progress: Optional[float] = Field(None, description="Progress percentage")
     message: Optional[str] = Field(None, description="Status message")
     document_count: Optional[int] = Field(None, description="Number of processed documents")
-
-
-class RetrieverQueryRequest(BaseModel):
-    query: str = Field(..., description="Query text")
-    top_k: int = Field(default=10, description="Number of top results to return")
-    filters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional filters")
-
-
-class RetrieverQueryResponse(BaseModel):
-    query: str = Field(..., description="Original query")
-    results: List[Dict[str, Any]] = Field(..., description="Retrieved documents")
-    total_count: int = Field(..., description="Total number of results")
-    processing_time: float = Field(..., description="Query processing time in seconds") 

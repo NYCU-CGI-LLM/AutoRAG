@@ -66,19 +66,7 @@ async def send_message(chat_id: UUID, message_create: MessageCreate):
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
-@router.get("/{chat_id}/messages", response_model=List[Message])
-async def get_chat_messages(chat_id: UUID, limit: int = 50, offset: int = 0):
-    """
-    Get chat messages with pagination.
-    
-    Returns a paginated list of messages from the specified chat session,
-    ordered by creation timestamp.
-    """
-    # TODO: Implement message listing logic
-    return []  # Return empty list as placeholder
-
-
-@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 async def delete_chat(chat_id: UUID):
     """
     Delete a chat session.
@@ -90,7 +78,7 @@ async def delete_chat(chat_id: UUID):
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
-@router.delete("/{chat_id}/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{chat_id}/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 async def delete_message(chat_id: UUID, message_id: UUID):
     """
     Delete a specific message from the chat.
@@ -102,7 +90,7 @@ async def delete_message(chat_id: UUID, message_id: UUID):
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
-@router.put("/{chat_id}/name")
+@router.put("/{chat_id}/name", include_in_schema=False)
 async def update_chat_name(chat_id: UUID, name: str):
     """
     Update chat name.

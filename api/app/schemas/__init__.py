@@ -17,8 +17,6 @@ from .retriever import (
     RetrieverConfigCreate,
     RetrieverConfigDetail,
     IndexingStatusUpdate,
-    RetrieverQueryRequest,
-    RetrieverQueryResponse,
 )
 
 from .chat import (
@@ -60,8 +58,6 @@ __all__ = [
     "RetrieverConfigCreate",
     "RetrieverConfigDetail",
     "IndexingStatusUpdate",
-    "RetrieverQueryRequest",
-    "RetrieverQueryResponse",
     "Chat",
     "ChatCreate",
     "ChatDetail",
