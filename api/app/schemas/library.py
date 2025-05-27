@@ -29,9 +29,14 @@ class Library(LibraryBase, IDModel, TimestampModel):
 class FileInfo(BaseModel):
     id: UUID = Field(..., description="File ID")
     file_name: str = Field(..., description="Original filename")
-    content_type: str = Field(..., description="MIME type of the file")
-    size: int = Field(..., description="File size in bytes")
-    upload_time: datetime = Field(..., description="Upload timestamp")
+    mime_type: str = Field(..., description="MIME type of the file")
+    size_bytes: Optional[int] = Field(None, description="File size in bytes")
+    bucket: str = Field(..., description="MinIO bucket name")
+    object_key: str = Field(..., description="MinIO object key/path")
+    status: str = Field(..., description="File status (active/deleted/archived)")
+    uploaded_at: datetime = Field(..., description="Upload timestamp")
+    uploader_id: Optional[UUID] = Field(None, description="ID of user who uploaded the file")
+    checksum_md5: Optional[str] = Field(None, description="MD5 checksum for integrity verification")
     
     class Config:
         from_attributes = True
@@ -44,10 +49,22 @@ class LibraryDetail(Library):
 class FileUploadResponse(BaseModel):
     file_id: UUID = Field(..., description="Uploaded file ID")
     file_name: str = Field(..., description="Original filename")
-    file_size: int = Field(..., description="File size in bytes")
-    content_type: Optional[str] = Field(None, description="MIME type")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: str = Field(..., description="MIME type")
+    bucket: str = Field(..., description="MinIO bucket name")
+    object_key: str = Field(..., description="MinIO object key/path")
+    status: str = Field(..., description="File status")
+    uploaded_at: datetime = Field(..., description="Upload timestamp")
+    checksum_md5: Optional[str] = Field(None, description="MD5 checksum")
     message: str = Field(..., description="Upload status message")
-    upload_timestamp: str = Field(..., description="Upload timestamp in ISO format")
+
+
+class FileDownloadResponse(BaseModel):
+    download_url: str = Field(..., description="Presigned download URL")
+    file_name: str = Field(..., description="Original filename")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: str = Field(..., description="MIME type")
+    expires_in: str = Field(..., description="URL expiration time")
 
 
 class LibraryUpdateRequest(BaseModel):

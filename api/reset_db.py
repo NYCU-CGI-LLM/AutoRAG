@@ -11,8 +11,10 @@ from app.models.file import File, FileStatus
 from app.models.retriever import Retriever, VectorDBRetriever, BM25Retriever
 from app.models.chat import Chat
 from app.models.dialog import Dialog
-from app.models.parser import Parser, EngineType, ParserStatus
+from app.models.parser import Parser, ParserStatus
+from app.models.chunker import Chunker, ChunkerStatus
 from app.models.file_parse_result import FileParseResult, ParseStatus
+from app.models.file_chunk_result import FileChunkResult, ChunkStatus
 
 def reset_database():
     """Drop and recreate all database tables"""
@@ -26,8 +28,10 @@ def reset_database():
     print("\nDatabase reset completed with updated schema!")
     print("New tables created:")
     print("- file (with MinIO fields, extended metadata, and FileStatus enum)")
-    print("- parser (with engine_type, supported_mime array, params JSONB, and ParserStatus enum)")
+    print("- parser (with module_type string field, supported_mime array, params JSONB, and ParserStatus enum)")
+    print("- chunker (with module_type, chunk_method, chunk_size, chunk_overlap, params JSONB, and ChunkerStatus enum)")
     print("- file_parse_result (for tracking parse results with bucket and JSONB metadata)")
+    print("- file_chunk_result (for tracking chunk results linking parse results to chunkers)")
 
 if __name__ == "__main__":
     reset_database() 

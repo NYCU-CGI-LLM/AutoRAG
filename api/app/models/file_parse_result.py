@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship, Column
 from sqlalchemy import Index, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from uuid import UUID
 from datetime import datetime
 from enum import Enum
@@ -9,6 +9,7 @@ from enum import Enum
 if TYPE_CHECKING:
     from .file import File
     from .parser import Parser
+    from .file_chunk_result import FileChunkResult
 
 
 class ParseStatus(str, Enum):
@@ -45,6 +46,7 @@ class FileParseResult(SQLModel, table=True):
     # Relationships
     file: "File" = Relationship(back_populates="parse_results")
     parser: "Parser" = Relationship(back_populates="parse_results")
+    chunk_results: List["FileChunkResult"] = Relationship(back_populates="file_parse_result")
     
     # Table constraints for data integrity and performance
     __table_args__ = (

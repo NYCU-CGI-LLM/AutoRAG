@@ -7,6 +7,7 @@ from enum import Enum
 if TYPE_CHECKING:
     from .library import Library
     from .file_parse_result import FileParseResult
+    from .file_chunk_result import FileChunkResult
 
 
 class FileStatus(str, Enum):
@@ -39,4 +40,5 @@ class File(SQLModel, table=True):
     
     # Relationships
     library: "Library" = Relationship(back_populates="files")
-    parse_results: List["FileParseResult"] = Relationship(back_populates="file") 
+    parse_results: List["FileParseResult"] = Relationship(back_populates="file")
+    chunk_results: List["FileChunkResult"] = Relationship(back_populates="file") 

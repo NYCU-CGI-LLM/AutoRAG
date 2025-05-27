@@ -79,13 +79,8 @@ class LibraryService:
                     detail=f"Library with ID {library_id} not found"
                 )
             
-            # Get file stats from database
-            file_statement = select(FileModel).where(FileModel.library_id == library_id)
-            db_files = session.exec(file_statement).all()
-            
-            # Get actual file sizes from MinIO
-            minio_files = minio_service.list_library_files(library_id)
-            total_size = sum(file["size"] for file in minio_files)
+            # Get statistics from database
+            stats = self.get_library_stats(library_id, session)
             
             return Library(
                 id=db_library.id,
@@ -93,7 +88,7 @@ class LibraryService:
                 description=db_library.description,
                 created_at=db_library.created_at,
                 updated_at=db_library.updated_at,
-                stats=LibraryStats(file_count=len(db_files), total_size=total_size)
+                stats=stats
             )
             
         except HTTPException:
@@ -103,67 +98,66 @@ class LibraryService:
             raise HTTPException(status_code=500, detail="Failed to retrieve library")
     
     def get_library_detail(self, library_id: UUID, session: Session) -> LibraryDetail:
-        """Get detailed library information including files"""
+        """Get library with its files"""
         try:
-            statement = select(LibraryModel).where(LibraryModel.id == library_id)
-            db_library = session.exec(statement).first()
+            # Get library basic info
+            library_statement = select(LibraryModel).where(LibraryModel.id == library_id)
+            db_library = session.exec(library_statement).first()
             
             if not db_library:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Library with ID {library_id} not found"
-                )
+                raise HTTPException(status_code=404, detail="Library not found")
             
             # Get files from database
-            file_statement = select(FileModel).where(FileModel.library_id == library_id)
-            db_files = session.exec(file_statement).all()
+            files_statement = select(FileModel).where(FileModel.library_id == library_id)
+            db_files = session.exec(files_statement).all()
             
-            # Get files from MinIO
-            minio_files = minio_service.list_library_files(library_id)
-            minio_file_map = {file["file_id"]: file for file in minio_files}
-            
-            # Combine database and MinIO information
-            files = []
-            total_size = 0
-            
+            # Convert files to FileInfo schema
+            files_info = []
             for db_file in db_files:
-                minio_file = minio_file_map.get(str(db_file.id))
-                if minio_file:
-                    file_info = FileInfo(
-                        id=db_file.id,
-                        file_name=db_file.file_name,
-                        content_type=minio_file.get("content_type", "application/octet-stream"),
-                        size=minio_file["size"],
-                        upload_time=datetime.fromisoformat(minio_file["last_modified"]) if minio_file["last_modified"] else datetime.utcnow()
-                    )
-                    files.append(file_info)
-                    total_size += minio_file["size"]
-                else:
-                    # File exists in DB but not in MinIO - create placeholder
-                    file_info = FileInfo(
-                        id=db_file.id,
-                        file_name=db_file.file_name,
-                        content_type="application/octet-stream",
-                        size=0,
-                        upload_time=datetime.utcnow()
-                    )
-                    files.append(file_info)
+                file_info = FileInfo(
+                    id=db_file.id,
+                    file_name=db_file.file_name,
+                    mime_type=db_file.mime_type,
+                    size_bytes=db_file.size_bytes,
+                    bucket=db_file.bucket,
+                    object_key=db_file.object_key,
+                    status=db_file.status.value,  # Convert enum to string
+                    uploaded_at=db_file.uploaded_at,
+                    uploader_id=db_file.uploader_id,
+                    checksum_md5=db_file.checksum_md5
+                )
+                files_info.append(file_info)
             
-            return LibraryDetail(
+            # Get library stats
+            stats = self.get_library_stats(library_id, session)
+            
+            # Create LibraryDetail response
+            library_detail = LibraryDetail(
                 id=db_library.id,
                 library_name=db_library.library_name,
                 description=db_library.description,
                 created_at=db_library.created_at,
                 updated_at=db_library.updated_at,
-                stats=LibraryStats(file_count=len(files), total_size=total_size),
-                files=files
+                stats=stats,
+                files=files_info
             )
+            
+            return library_detail
             
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error getting library detail {library_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to retrieve library details")
+            logger.error(f"Error getting library detail: {e}")
+            raise HTTPException(status_code=500, detail="Failed to get library detail")
+    
+    def get_file_by_id(self, file_id: UUID, session: Session) -> Optional[FileModel]:
+        """Get a file by its ID"""
+        try:
+            file_statement = select(FileModel).where(FileModel.id == file_id)
+            return session.exec(file_statement).first()
+        except Exception as e:
+            logger.error(f"Error getting file by ID: {e}")
+            return None
     
     def list_libraries(self, session: Session) -> List[Library]:
         """List all libraries"""
@@ -173,17 +167,8 @@ class LibraryService:
             
             libraries = []
             for db_library in db_libraries:
-                # Get file count from database
-                file_statement = select(FileModel).where(FileModel.library_id == db_library.id)
-                db_files = session.exec(file_statement).all()
-                
-                # Get total size from MinIO
-                try:
-                    minio_files = minio_service.list_library_files(db_library.id)
-                    total_size = sum(file["size"] for file in minio_files)
-                except Exception as e:
-                    logger.warning(f"Failed to get MinIO stats for library {db_library.id}: {e}")
-                    total_size = 0
+                # Get statistics from database
+                stats = self.get_library_stats(db_library.id, session)
                 
                 library = Library(
                     id=db_library.id,
@@ -191,7 +176,7 @@ class LibraryService:
                     description=db_library.description,
                     created_at=db_library.created_at,
                     updated_at=db_library.updated_at,
-                    stats=LibraryStats(file_count=len(db_files), total_size=total_size)
+                    stats=stats
                 )
                 libraries.append(library)
             
@@ -240,15 +225,8 @@ class LibraryService:
             
             logger.info(f"Updated library {library_id}")
             
-            # Get current stats
-            file_statement = select(FileModel).where(FileModel.library_id == library_id)
-            db_files = session.exec(file_statement).all()
-            
-            try:
-                minio_files = minio_service.list_library_files(library_id)
-                total_size = sum(file["size"] for file in minio_files)
-            except Exception:
-                total_size = 0
+            # Get current stats from database
+            stats = self.get_library_stats(library_id, session)
             
             return Library(
                 id=db_library.id,
@@ -256,7 +234,7 @@ class LibraryService:
                 description=db_library.description,
                 created_at=db_library.created_at,
                 updated_at=db_library.updated_at,
-                stats=LibraryStats(file_count=len(db_files), total_size=total_size)
+                stats=stats
             )
             
         except HTTPException:
@@ -319,38 +297,56 @@ class LibraryService:
             return False
     
     def get_library_stats(self, library_id: UUID, session: Session) -> LibraryStats:
-        """Get library statistics"""
+        """Get library statistics from database"""
         try:
-            if not self.library_exists(library_id, session):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Library with ID {library_id} not found"
-                )
+            # Import the enum to use in comparison
+            from app.models.file import FileStatus
             
-            # Get file count from database
-            file_statement = select(FileModel).where(FileModel.library_id == library_id)
-            db_files = session.exec(file_statement).all()
+            # Count files and sum their sizes from database
+            files_statement = select(FileModel).where(
+                FileModel.library_id == library_id,
+                FileModel.status == FileStatus.ACTIVE  # Use enum value instead of string
+            )
+            db_files = session.exec(files_statement).all()
+            
             file_count = len(db_files)
+            total_size = sum(file.size_bytes or 0 for file in db_files)
             
-            # Get total size from MinIO
-            minio_files = minio_service.list_library_files(library_id)
-            total_size = sum(file["size"] for file in minio_files)
+            return LibraryStats(
+                file_count=file_count,
+                total_size=total_size
+            )
             
-            return LibraryStats(file_count=file_count, total_size=total_size)
-            
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error(f"Error getting library stats {library_id}: {e}")
+            logger.error(f"Error getting library stats: {e}")
             raise HTTPException(status_code=500, detail="Failed to get library statistics")
     
-    def create_file_record(self, library_id: UUID, file_id: UUID, file_name: str, session: Session) -> FileModel:
-        """Create a file record in the database"""
+    def create_file_record(
+        self, 
+        library_id: UUID, 
+        file_id: UUID, 
+        file_name: str, 
+        mime_type: str,
+        size_bytes: Optional[int] = None,
+        bucket: str = "rag-files",
+        object_key: str = "",
+        checksum_md5: Optional[str] = None,
+        uploader_id: Optional[UUID] = None,
+        session: Session = None
+    ) -> FileModel:
+        """Create a file record in the database with all necessary metadata"""
         try:
             db_file = FileModel(
                 id=file_id,
                 library_id=library_id,
-                file_name=file_name
+                file_name=file_name,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                bucket=bucket,
+                object_key=object_key,
+                checksum_md5=checksum_md5,
+                uploader_id=uploader_id
+                # uploaded_at and status have default values in the model
             )
             
             session.add(db_file)

@@ -9,7 +9,8 @@ from app.schemas.library import (
     LibraryDetail,
     LibraryUpdateRequest,
     FileInfo,
-    FileUploadResponse
+    FileUploadResponse,
+    FileDownloadResponse
 )
 from app.schemas.common import (
     ErrorResponse,
@@ -135,7 +136,7 @@ async def upload_file(
     - Allowed types: PDF, DOC, DOCX, TXT, CSV, JSON, MD
     
     **Returns:**
-    - File upload response with MinIO metadata
+    - File upload response with complete metadata
     
     **Errors:**
     - 400: Invalid file type or other validation error
@@ -170,23 +171,33 @@ async def upload_file(
         # Upload file to MinIO
         upload_result = await minio_service.upload_file(file, library_id)
         
-        # Create file record in database
+        # Create file record in database with complete metadata
         file_id = UUID(upload_result["file_id"])
-        library_service.create_file_record(
-            library_id=library_id,
-            file_id=file_id,
-            file_name=upload_result["original_filename"],
-            session=session
+        db_file = library_service.create_file_record(
+            library_id,
+            file_id,
+            upload_result["original_filename"],
+            upload_result["content_type"],
+            upload_result["file_size"],
+            "rag-files",  # bucket
+            upload_result.get("object_name", ""),
+            upload_result.get("checksum_md5"),
+            None,  # uploader_id
+            session
         )
         
-        # Return response matching FileUploadResponse schema
+        # Return response with complete file metadata
         return FileUploadResponse(
             file_id=file_id,
-            file_name=upload_result["original_filename"],
-            file_size=upload_result["file_size"],
-            content_type=upload_result["content_type"],
-            message="File uploaded successfully",
-            upload_timestamp=upload_result["upload_timestamp"]
+            file_name=db_file.file_name,
+            file_size=db_file.size_bytes,
+            mime_type=db_file.mime_type,
+            bucket=db_file.bucket,
+            object_key=db_file.object_key,
+            status=str(db_file.status),
+            uploaded_at=db_file.uploaded_at,
+            checksum_md5=db_file.checksum_md5,
+            message="File uploaded successfully"
         )
         
     except HTTPException:
@@ -203,14 +214,14 @@ async def list_library_files(
     """
     List all files in a library.
     
-    Returns all files stored in the specified library from MinIO.
-    Files are returned with metadata including size, upload time, and file ID.
+    Returns all files stored in the specified library from the database.
+    Files are returned with complete metadata including size, upload time, and status.
     
     **Path Parameters:**
     - library_id: UUID of the library
     
     **Returns:**
-    - List of file metadata from MinIO storage
+    - List of files with complete metadata
     
     **Errors:**
     - 404: Library not found
@@ -224,8 +235,9 @@ async def list_library_files(
                 detail=f"Library with ID {library_id} not found"
             )
         
-        files = minio_service.list_library_files(library_id)
-        return {"files": files}
+        # Get library detail which includes files
+        library_detail = library_service.get_library_detail(library_id, session)
+        return {"files": library_detail.files}
         
     except HTTPException:
         raise
@@ -233,7 +245,7 @@ async def list_library_files(
         raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
 
 
-@router.get("/{library_id}/file/{file_id}/download")
+@router.get("/{library_id}/file/{file_id}/download", response_model=FileDownloadResponse)
 async def download_file(
     library_id: UUID, 
     file_id: UUID,
@@ -250,7 +262,7 @@ async def download_file(
     - file_id: UUID of the file
     
     **Returns:**
-    - Presigned URL for file download with expiration info
+    - Presigned URL for file download with complete metadata
     
     **Errors:**
     - 404: Library or file not found
@@ -264,21 +276,21 @@ async def download_file(
                 detail=f"Library with ID {library_id} not found"
             )
         
-        # Get file metadata to construct object name
-        files = minio_service.list_library_files(library_id)
-        file_info = next((f for f in files if f["file_id"] == str(file_id)), None)
-        
-        if not file_info:
+        # Get file from database
+        db_file = library_service.get_file_by_id(file_id, session)
+        if not db_file or db_file.library_id != library_id:
             raise HTTPException(status_code=404, detail="File not found")
         
-        # Generate presigned URL
-        download_url = minio_service.get_file_url(file_info["object_name"])
+        # Generate presigned URL using MinIO object key
+        download_url = minio_service.get_file_url(db_file.object_key)
         
-        return {
-            "download_url": download_url,
-            "filename": file_info["filename"],
-            "expires_in": "1 hour"
-        }
+        return FileDownloadResponse(
+            download_url=download_url,
+            file_name=db_file.file_name,
+            file_size=db_file.size_bytes,
+            mime_type=db_file.mime_type,
+            expires_in="1 hour"
+        )
         
     except HTTPException:
         raise

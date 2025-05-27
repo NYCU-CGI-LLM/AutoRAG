@@ -8,13 +8,6 @@ if TYPE_CHECKING:
     from .file_parse_result import FileParseResult
 
 
-class EngineType(str, Enum):
-    LANGCHAIN = "langchain"
-    LLAMA_PARSE = "llama_parse"
-    TESSERACT_OCR = "tesseract_ocr"
-    PIPELINE = "pipeline"
-
-
 class ParserStatus(str, Enum):
     ACTIVE = "active"
     DRAFT = "draft"
@@ -26,7 +19,7 @@ class Parser(SQLModel, table=True):
     
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(..., max_length=100, unique=True)  # e.g. pdf_pymupdf_v1
-    engine_type: EngineType = Field(...)
+    module_type: str = Field(..., max_length=50)  # e.g. langchain, llama_parse, tesseract_ocr, pipeline
     
     # Use SQLAlchemy for PostgreSQL ARRAY type
     supported_mime: List[str] = Field(
