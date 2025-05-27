@@ -2,7 +2,7 @@ import os
 from functools import wraps
 from quart import jsonify
 
-from autorag_cgi.api.app.schemas._schema import Trial
+from app.schemas._schema import Trial
 # from autorag_cgi.api.app.db.project_db import SQLiteProjectDB
 
 

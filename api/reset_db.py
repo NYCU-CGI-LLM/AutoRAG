@@ -4,9 +4,15 @@
 from app.core.database import engine
 from sqlmodel import SQLModel
 
-# Import models to register them
+# Import all models to register them with SQLModel metadata
+from app.models.user import User
 from app.models.library import Library
-from app.models.file import File
+from app.models.file import File, FileStatus
+from app.models.retriever import Retriever, VectorDBRetriever, BM25Retriever
+from app.models.chat import Chat
+from app.models.dialog import Dialog
+from app.models.parser import Parser, EngineType, ParserStatus
+from app.models.file_parse_result import FileParseResult, ParseStatus
 
 def reset_database():
     """Drop and recreate all database tables"""
@@ -17,6 +23,11 @@ def reset_database():
     print("Creating all tables...")
     SQLModel.metadata.create_all(engine)
     print("Tables created successfully")
+    print("\nDatabase reset completed with updated schema!")
+    print("New tables created:")
+    print("- file (with MinIO fields, extended metadata, and FileStatus enum)")
+    print("- parser (with engine_type, supported_mime array, params JSONB, and ParserStatus enum)")
+    print("- file_parse_result (for tracking parse results with bucket and JSONB metadata)")
 
 if __name__ == "__main__":
     reset_database() 
