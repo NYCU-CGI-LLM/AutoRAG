@@ -6,6 +6,7 @@ from enum import Enum
 
 if TYPE_CHECKING:
     from .file_chunk_result import FileChunkResult
+    from .retriever import Retriever
 
 
 class ChunkerStatus(str, Enum):
@@ -33,4 +34,5 @@ class Chunker(SQLModel, table=True):
     status: ChunkerStatus = Field(default=ChunkerStatus.ACTIVE)
     
     # Relationships
-    chunk_results: List["FileChunkResult"] = Relationship(back_populates="chunker") 
+    chunk_results: List["FileChunkResult"] = Relationship(back_populates="chunker")
+    retrievers: List["Retriever"] = Relationship(back_populates="chunker") 

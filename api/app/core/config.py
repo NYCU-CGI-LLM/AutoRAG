@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     
     # MinIO Configuration
     minio_endpoint: str = Field("localhost:9000", env="MINIO_ENDPOINT")
-    minio_access_key: str = Field("minioadmin", env="MINIO_ACCESS_KEY")
-    minio_secret_key: str = Field("minioadmin", env="MINIO_SECRET_KEY")
+    minio_access_key: str = Field("adminadmin", env="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field("adminadmin", env="MINIO_SECRET_KEY")
     minio_secure: bool = Field(False, env="MINIO_SECURE")
     minio_bucket_name: str = Field("autorag-files", env="MINIO_BUCKET_NAME")
 

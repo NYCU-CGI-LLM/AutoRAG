@@ -6,6 +6,7 @@ from enum import Enum
 
 if TYPE_CHECKING:
     from .file_parse_result import FileParseResult
+    from .retriever import Retriever
 
 
 class ParserStatus(str, Enum):
@@ -36,4 +37,5 @@ class Parser(SQLModel, table=True):
     status: ParserStatus = Field(default=ParserStatus.ACTIVE)
     
     # Relationships
-    parse_results: List["FileParseResult"] = Relationship(back_populates="parser") 
+    parse_results: List["FileParseResult"] = Relationship(back_populates="parser")
+    retrievers: List["Retriever"] = Relationship(back_populates="parser") 
