@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import text
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from enum import Enum
+from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from .file_chunk_result import FileChunkResult
@@ -18,7 +19,7 @@ class ChunkerStatus(str, Enum):
 class Chunker(SQLModel, table=True):
     __tablename__ = "chunker"
     
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(..., max_length=100, unique=True)  # User-defined method name
     module_type: str = Field(..., max_length=50)  # llama_index_chunk, langchain_chunk, pipeline
     chunk_method: str = Field(..., max_length=50)  # Token, Sentence, Character, etc.

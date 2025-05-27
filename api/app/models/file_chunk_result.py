@@ -27,7 +27,7 @@ class FileChunkResult(SQLModel, table=True):
     # Foreign keys with cascade delete
     file_id: UUID = Field(foreign_key="file.id", ondelete="CASCADE")
     file_parse_result_id: int = Field(foreign_key="file_parse_result.id", ondelete="CASCADE")
-    chunker_id: int = Field(foreign_key="chunker.id", ondelete="CASCADE")
+    chunker_id: UUID = Field(foreign_key="chunker.id", ondelete="CASCADE")
     
     # MinIO storage fields
     bucket: str = Field(default="rag-chunked-files", max_length=63)

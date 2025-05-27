@@ -32,9 +32,9 @@ class Retriever(SQLModel, table=True):
     
     # Index combination - what makes this retriever unique
     library_id: UUID = Field(foreign_key="library.id", ondelete="CASCADE")
-    parser_id: int = Field(foreign_key="parser.id", ondelete="CASCADE")
-    chunker_id: int = Field(foreign_key="chunker.id", ondelete="CASCADE")
-    indexer_id: int = Field(foreign_key="indexer.id", ondelete="CASCADE")
+    parser_id: UUID = Field(foreign_key="parser.id", ondelete="CASCADE")
+    chunker_id: UUID = Field(foreign_key="chunker.id", ondelete="CASCADE")
+    indexer_id: UUID = Field(foreign_key="indexer.id", ondelete="CASCADE")
     
     # Retrieval configuration
     top_k: int = Field(default=10)

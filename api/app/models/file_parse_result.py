@@ -26,7 +26,7 @@ class FileParseResult(SQLModel, table=True):
     
     # Foreign keys with cascade delete
     file_id: UUID = Field(foreign_key="file.id", ondelete="CASCADE")
-    parser_id: int = Field(foreign_key="parser.id", ondelete="CASCADE")
+    parser_id: UUID = Field(foreign_key="parser.id", ondelete="CASCADE")
     
     # MinIO storage fields
     bucket: str = Field(default="rag-parsed-files", max_length=63)

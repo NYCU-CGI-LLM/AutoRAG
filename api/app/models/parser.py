@@ -3,6 +3,7 @@ from sqlalchemy import ARRAY, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List, TYPE_CHECKING, Dict, Any
 from enum import Enum
+from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from .file_parse_result import FileParseResult
@@ -18,7 +19,7 @@ class ParserStatus(str, Enum):
 class Parser(SQLModel, table=True):
     __tablename__ = "parser"
     
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(..., max_length=100, unique=True)  # e.g. pdf_pymupdf_v1
     module_type: str = Field(..., max_length=50)  # e.g. langchain, llama_parse, tesseract_ocr, pipeline
     
