@@ -33,6 +33,8 @@ from langchain.text_splitter import (
 	SentenceTransformersTokenTextSplitter,
 )
 
+from autorag.data.index import index_modules
+
 # Define LazyInit locally to avoid circular import
 class LazyInit:
 	def __init__(self, factory, *args, **kwargs):
