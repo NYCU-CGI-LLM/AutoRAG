@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import create_db_and_tables
+from app.core.minio_init import initialize_minio_buckets
 # Import models to ensure they are registered with SQLModel
 from app.models.library import Library
 from app.models.file import File
@@ -45,6 +46,17 @@ async def startup_event():
     logger.info("Creating database tables...")
     create_db_and_tables()
     logger.info("Database tables created successfully")
+
+    # Initialize MinIO buckets
+    success = initialize_minio_buckets(
+        endpoint="localhost:9000",  # Use service name when running in Docker
+        access_key="adminadmin",
+        secret_key="adminadmin",
+        bucket_names=["rag-files", "rag-chunked-files", "rag-parsed-files"]
+    )
+    
+    if not success:
+        raise Exception("Failed to initialize MinIO buckets")
 
 # Include routers
 # app.include_router(auth.router)
