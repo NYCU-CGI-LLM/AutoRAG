@@ -2,7 +2,9 @@ import logging
 import tempfile
 import os
 import pandas as pd
-from typing import List, Dict, Any, Optional
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Any, Optional, Union
 from uuid import UUID
 from datetime import datetime
 from sqlmodel import Session, select
@@ -63,7 +65,7 @@ class ChunkerService:
     def chunk_parsed_results(
         self,
         session: Session,
-        parse_result_ids: List[int],
+        parse_result_ids: List[UUID],
         chunker_id: UUID
     ) -> List[FileChunkResult]:
         """Chunk multiple parsed results using specified chunker"""
@@ -73,7 +75,7 @@ class ChunkerService:
         if not chunker:
             raise HTTPException(status_code=404, detail="Chunker not found")
         
-        # Get parse results - fix the query syntax
+        # Get parse results
         parse_results = []
         for parse_result_id in parse_result_ids:
             parse_result = session.get(FileParseResult, parse_result_id)
@@ -136,7 +138,7 @@ class ChunkerService:
         # Create chunk result record
         chunk_result = FileChunkResult(
             file_id=parse_result.file_id,
-            file_parse_result_id=parse_result.id if parse_result.id is not None else 0,
+            file_parse_result_id=parse_result.id,
             chunker_id=chunker.id,
             bucket="rag-chunked-files",
             object_key=f"chunked/{parse_result.file_id}/{parse_result.id}/{chunker.name}.parquet",
@@ -219,40 +221,47 @@ class ChunkerService:
         module_type: str,
         chunk_method: str,
         params: Dict[str, Any]
-    ) -> Dict[str, List]:
+    ) -> Dict[str, Any]:
         """Run autorag chunker on parsed data"""
         
-        # Prepare chunker parameters
-        chunker_params = params.copy()
-        
-        # Add chunk_size and chunk_overlap if they exist in chunker config
-        if "chunk_size" in chunker_params:
-            chunker_params["chunk_size"] = chunker_params["chunk_size"]
-        if "chunk_overlap" in chunker_params:
-            chunker_params["chunk_overlap"] = chunker_params["chunk_overlap"]
-        
-        if module_type == "langchain_chunk":
-            # Use langchain chunker
-            result = langchain_chunk(
-                parsed_data,
-                chunk_method=chunk_method,
-                **chunker_params
-            )
+        def _run_chunker_in_thread():
+            """Run chunker in a separate thread to avoid event loop conflicts"""
+            # Prepare chunker parameters
+            chunker_params = params.copy()
             
-        elif module_type == "llama_index_chunk":
-            # Use llama_index chunker
-            result = llama_index_chunk(
-                parsed_data,
-                chunk_method=chunk_method,
-                **chunker_params
-            )
+            if module_type == "langchain_chunk":
+                # Use langchain chunker
+                result = langchain_chunk(
+                    parsed_data,
+                    chunk_method,
+                    **chunker_params
+                )
+                
+            elif module_type == "llama_index_chunk":
+                # Use llama_index chunker  
+                result = llama_index_chunk(
+                    parsed_data,
+                    chunk_method,
+                    **chunker_params
+                )
+                
+            else:
+                raise ValueError(f"Unsupported module_type: {module_type}")
             
-        else:
-            raise ValueError(f"Unsupported module_type: {module_type}")
+            return result
+        
+        # Run chunker in a separate thread to avoid event loop conflicts
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_run_chunker_in_thread)
+            result = future.result()
         
         # Convert result to dictionary format
         if isinstance(result, pd.DataFrame):
-            return result.to_dict('list')
+            # Convert DataFrame to dict with string keys
+            result_dict = {}
+            for key, value in result.to_dict('list').items():
+                result_dict[str(key)] = value
+            return result_dict
         else:
             # Assume result is a tuple (doc_id, contents, path, start_end_idx, metadata)
             return {
@@ -277,7 +286,7 @@ class ChunkerService:
         
         chunk_result = FileChunkResult(
             file_id=parse_result.file_id,
-            file_parse_result_id=parse_result.id if parse_result.id is not None else 0,
+            file_parse_result_id=parse_result.id,
             chunker_id=chunker.id,
             bucket="rag-chunked-files",
             object_key=f"chunked/{parse_result.file_id}/{parse_result.id}/{chunker.name}.parquet",
@@ -317,7 +326,7 @@ class ChunkerService:
     def get_chunked_data(
         self,
         session: Session,
-        chunk_result_id: int
+        chunk_result_id: UUID
     ) -> pd.DataFrame:
         """Get chunked data from MinIO"""
         

@@ -167,7 +167,7 @@ async def list_parse_results(
 
 @router.get("/parser/parse-results/{result_id}/data", response_model=ParsedDataResponse)
 async def get_parsed_data_preview(
-    result_id: int,
+    result_id: UUID,
     session: Session = Depends(get_session),
     preview_rows: int = Query(5, description="Number of rows to preview")
 ):
@@ -254,9 +254,9 @@ async def chunk_parsed_results(
         
         for result in results:
             result_dict = {
-                "id": result.id,
+                "id": str(result.id),
                 "file_id": str(result.file_id),
-                "file_parse_result_id": result.file_parse_result_id,
+                "file_parse_result_id": str(result.file_parse_result_id),
                 "chunker_id": str(result.chunker_id),
                 "status": result.status.value if result.status else "unknown",
                 "bucket": result.bucket,
@@ -335,7 +335,7 @@ async def list_chunk_results(
 
 @router.get("/chunker/chunk-results/{result_id}/data", response_model=ChunkedDataResponse)
 async def get_chunked_data_preview(
-    result_id: int,
+    result_id: UUID,
     session: Session = Depends(get_session),
     preview_rows: int = Query(5, description="Number of chunks to preview")
 ):

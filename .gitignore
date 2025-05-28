@@ -123,6 +123,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.dev
+.env.local
+.env.production
 .venv
 env/
 venv/
@@ -168,6 +171,11 @@ test_projects
 # Visual Studio Code
 .vscode/
 
+# Vector Database Storage (Large Files)
+temp/
+chroma/
+qdrant_storage/
+*.bin
 
 api/data/
 api/temp/

@@ -14,22 +14,32 @@ class Settings(BaseSettings):
         env_file_encoding='utf-8'
     )
 
-    autorag_api_env: str = Field("dev", env="AUTORAG_API_ENV")
-    work_dir: Path = Field(default=Path(__file__).resolve().parent.parent / "projects", env="AUTORAG_WORK_DIR")
+    autorag_api_env: str = "dev"
+    work_dir: Path = Field(default=Path(__file__).resolve().parent.parent / "projects")
     app_name: str = "AUO-RAG API"
     app_version: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     cors_allow_origins: List[str] = ["*"]
     # database_url: str = Field(..., env="DATABASE_URL")
-    secret_key: str = Field(..., env="SECRET_KEY")
+    secret_key: str = Field(default="your-secret-key-here")
     access_token_expire_minutes: int = 30
     
     # MinIO Configuration
-    minio_endpoint: str = Field("localhost:9000", env="MINIO_ENDPOINT")
-    minio_access_key: str = Field("adminadmin", env="MINIO_ACCESS_KEY")
-    minio_secret_key: str = Field("adminadmin", env="MINIO_SECRET_KEY")
-    minio_secure: bool = Field(False, env="MINIO_SECURE")
-    minio_bucket_name: str = Field("autorag-files", env="MINIO_BUCKET_NAME")
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "adminadmin"
+    minio_secret_key: str = "adminadmin"
+    minio_secure: bool = False
+    minio_bucket_name: str = "autorag-files"
+    
+    # Redis Configuration
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+    
+    # ChromaDB Configuration
+    chroma_path: str = Field(default="./resources/chroma")
+    default_embedding_model: str = Field(default="openai_embed_3_large")
+    embedding_batch_size: int = Field(default=100)
 
 logger = logging.getLogger(__name__)
 logger.info("Before Settings instantiation in config.py")

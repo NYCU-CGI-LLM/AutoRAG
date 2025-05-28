@@ -16,7 +16,7 @@ class ParseResponse(BaseModel):
     """Response schema for parse operation results"""
     success: bool
     message: str
-    result_id: Optional[int] = None
+    result_id: Optional[UUID] = None
     status: Optional[str] = None
     error_message: Optional[str] = None
     extra_meta: Optional[dict] = None
@@ -45,7 +45,7 @@ class ParserInfo(BaseModel):
 
 class ParseResultInfo(BaseModel):
     """Schema for parse result information"""
-    id: Optional[int] = None
+    id: UUID
     file_id: UUID
     file_name: str
     parser_id: UUID
@@ -84,7 +84,7 @@ class HealthResponse(BaseModel):
 # Chunker related schemas
 class ChunkRequest(BaseModel):
     """Request schema for chunking parsed results with a specific chunker"""
-    parse_result_ids: List[int]
+    parse_result_ids: List[UUID]
     chunker_id: UUID
 
 
@@ -112,10 +112,10 @@ class ChunkerInfo(BaseModel):
 
 class ChunkResultInfo(BaseModel):
     """Schema for chunk result information"""
-    id: Optional[int] = None
+    id: UUID
     file_id: UUID
     file_name: str
-    file_parse_result_id: int
+    file_parse_result_id: UUID
     chunker_id: UUID
     chunker_name: str
     status: str
@@ -130,7 +130,7 @@ class ChunkedDataResponse(BaseModel):
     """Response schema for chunked data preview"""
     success: bool
     message: str
-    chunk_result_id: int
+    chunk_result_id: UUID
     total_chunks: Optional[int] = None
     columns: Optional[List[str]] = None
     preview_data: Optional[List[dict]] = None 

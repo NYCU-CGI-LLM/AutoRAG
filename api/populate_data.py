@@ -9,11 +9,11 @@ from pathlib import Path
 # Add the api directory to the Python path
 sys.path.append(str(Path(__file__).parent))
 
-from app.core.database import get_session
+from app.core.database import engine
 from app.models.parser import Parser, ParserStatus
 from app.models.chunker import Chunker, ChunkerStatus
 from app.models.indexer import Indexer, IndexerStatus
-from sqlmodel import select
+from sqlmodel import select, Session
 
 
 def populate_parsers():
@@ -153,7 +153,7 @@ def populate_parsers():
         }
     ]
     
-    with get_session() as session:
+    with Session(engine) as session:
         for parser_data in parsers_data:
             # Check if parser already exists
             existing = session.exec(
@@ -297,7 +297,7 @@ def populate_chunkers():
         }
     ]
     
-    with get_session() as session:
+    with Session(engine) as session:
         for chunker_data in chunkers_data:
             # Check if chunker already exists
             existing = session.exec(
@@ -415,7 +415,7 @@ def populate_indexers():
         }
     ]
     
-    with get_session() as session:
+    with Session(engine) as session:
         for indexer_data in indexers_data:
             # Check if indexer already exists
             existing = session.exec(

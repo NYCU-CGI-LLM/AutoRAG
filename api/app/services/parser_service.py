@@ -337,11 +337,7 @@ class ParserService:
             
         return list(session.exec(statement).all())
     
-    def get_parsed_data(
-        self,
-        session: Session,
-        parse_result_id: int
-    ) -> pd.DataFrame:
+    def get_parsed_data(self, session: Session, parse_result_id: UUID) -> pd.DataFrame:
         """Get parsed data from MinIO"""
         
         parse_result = session.get(FileParseResult, parse_result_id)

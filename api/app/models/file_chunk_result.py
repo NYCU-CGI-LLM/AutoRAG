@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field, Relationship, Column
 from sqlalchemy import Index, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, Dict, Any, TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime
 from enum import Enum
 
@@ -22,11 +22,11 @@ class FileChunkResult(SQLModel, table=True):
     __tablename__ = "file_chunk_result"
     
     # Primary key
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     
     # Foreign keys with cascade delete
     file_id: UUID = Field(foreign_key="file.id", ondelete="CASCADE")
-    file_parse_result_id: int = Field(foreign_key="file_parse_result.id", ondelete="CASCADE")
+    file_parse_result_id: UUID = Field(foreign_key="file_parse_result.id", ondelete="CASCADE")
     chunker_id: UUID = Field(foreign_key="chunker.id", ondelete="CASCADE")
     
     # MinIO storage fields

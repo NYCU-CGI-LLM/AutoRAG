@@ -74,7 +74,7 @@ def list_successful_parse_results(session: Session, limit: int = 10) -> List[Fil
 
 def test_chunking(
     session: Session, 
-    parse_result_ids: List[int], 
+    parse_result_ids: List[str], 
     chunker_id: str
 ) -> List[FileChunkResult]:
     """Test chunking with specific parse results and chunker"""
@@ -86,14 +86,15 @@ def test_chunking(
     print()
     
     try:
-        # Convert chunker_id to UUID
+        # Convert IDs to UUID
         from uuid import UUID
         chunker_uuid = UUID(chunker_id)
+        parse_result_uuids = [UUID(pid) for pid in parse_result_ids]
         
         # Perform chunking
         results = chunker_service.chunk_parsed_results(
             session=session,
-            parse_result_ids=parse_result_ids,
+            parse_result_ids=parse_result_uuids,
             chunker_id=chunker_uuid
         )
         
@@ -152,12 +153,14 @@ def list_chunk_results(session: Session, limit: int = 10) -> List[FileChunkResul
     return list(chunk_results)
 
 
-def get_chunked_data_preview(session: Session, chunk_result_id: int, preview_rows: int = 5):
+def get_chunked_data_preview(session: Session, chunk_result_id: str, preview_rows: int = 5):
     """Get preview of chunked data"""
     chunker_service = ChunkerService()
     
     try:
-        df = chunker_service.get_chunked_data(session, chunk_result_id)
+        from uuid import UUID
+        chunk_result_uuid = UUID(chunk_result_id)
+        df = chunker_service.get_chunked_data(session, chunk_result_uuid)
         
         print(f"=== Chunked Data Preview (Result ID: {chunk_result_id}) ===")
         print(f"Total rows: {len(df)}")
@@ -189,7 +192,7 @@ def main():
     parser.add_argument("--test-chunk", action="store_true", help="Test chunking")
     parser.add_argument("--parse-result-ids", type=str, help="Comma-separated parse result IDs for chunking")
     parser.add_argument("--chunker-id", type=str, help="Chunker ID for chunking")
-    parser.add_argument("--preview-data", type=int, help="Preview chunked data for given chunk result ID")
+    parser.add_argument("--preview-data", type=str, help="Preview chunked data for given chunk result ID")
     parser.add_argument("--limit", type=int, default=10, help="Limit for listing results")
     
     args = parser.parse_args()
@@ -212,7 +215,7 @@ def main():
                 print("❌ Error: --parse-result-ids and --chunker-id are required for testing chunking")
                 return
             
-            parse_result_ids = [int(x.strip()) for x in args.parse_result_ids.split(",")]
+            parse_result_ids = [x.strip() for x in args.parse_result_ids.split(",")]
             test_chunking(session, parse_result_ids, args.chunker_id)
         
         if args.preview_data:
