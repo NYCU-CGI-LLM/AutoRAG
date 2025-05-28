@@ -33,7 +33,7 @@ class ChunkerService:
     def get_active_chunkers(self, session: Session) -> List[Chunker]:
         """Get all active chunkers"""
         statement = select(Chunker).where(Chunker.status == ChunkerStatus.ACTIVE)
-        return session.exec(statement).all()
+        return list(session.exec(statement).all())
     
     def create_chunker(
         self,
@@ -43,7 +43,7 @@ class ChunkerService:
         chunk_method: str,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
-        params: Dict[str, Any] = None
+        params: Optional[Dict[str, Any]] = None
     ) -> Chunker:
         """Create a new chunker configuration"""
         chunker = Chunker(
@@ -112,14 +112,37 @@ class ChunkerService:
     ) -> FileChunkResult:
         """Chunk a single parse result"""
         
+        if chunker.id is None:
+            raise ValueError("Chunker ID cannot be None")
+        
+        # Check if chunk result already exists
+        existing_result = session.exec(
+            select(FileChunkResult).where(
+                FileChunkResult.file_parse_result_id == parse_result.id,
+                FileChunkResult.chunker_id == chunker.id
+            )
+        ).first()
+        
+        if existing_result:
+            if existing_result.status == ChunkStatus.SUCCESS:
+                logger.info(f"Chunk result already exists and is successful for parse result {parse_result.id}")
+                return existing_result
+            else:
+                # Delete failed/pending result and retry
+                logger.info(f"Deleting existing failed/pending chunk result {existing_result.id}")
+                session.delete(existing_result)
+                session.commit()
+        
         # Create chunk result record
         chunk_result = FileChunkResult(
             file_id=parse_result.file_id,
-            file_parse_result_id=parse_result.id,
+            file_parse_result_id=parse_result.id if parse_result.id is not None else 0,
             chunker_id=chunker.id,
             bucket="rag-chunked-files",
             object_key=f"chunked/{parse_result.file_id}/{parse_result.id}/{chunker.name}.parquet",
-            status=ChunkStatus.PENDING
+            status=ChunkStatus.PENDING,
+            chunked_at=None,
+            error_message=None
         )
         session.add(chunk_result)
         session.commit()
@@ -143,16 +166,16 @@ class ChunkerService:
             # Save chunked result to MinIO
             with tempfile.NamedTemporaryFile(suffix=".parquet") as temp_parquet:
                 df.to_parquet(temp_parquet.name, index=False)
-                temp_parquet.seek(0)
                 
                 # Upload to MinIO
-                self.minio_service.client.put_object(
-                    bucket_name=chunk_result.bucket,
-                    object_name=chunk_result.object_key,
-                    data=temp_parquet,
-                    length=os.path.getsize(temp_parquet.name),
-                    content_type="application/octet-stream"
-                )
+                with open(temp_parquet.name, 'rb') as file_data:
+                    self.minio_service.client.put_object(
+                        bucket_name=chunk_result.bucket,
+                        object_name=chunk_result.object_key,
+                        data=file_data,
+                        length=os.path.getsize(temp_parquet.name),
+                        content_type="application/octet-stream"
+                    )
             
             # Update chunk result status
             chunk_result.status = ChunkStatus.SUCCESS
@@ -179,8 +202,8 @@ class ChunkerService:
     def _get_parsed_data(self, parse_result: FileParseResult) -> pd.DataFrame:
         """Get parsed data from MinIO"""
         
-        # Download parquet file from MinIO
-        file_data = self.minio_service.download_file(parse_result.object_key)
+        # Download parquet file from MinIO using the correct bucket and object_key from parse_result
+        file_data = self.minio_service.client.get_object(parse_result.bucket, parse_result.object_key)
         
         # Load as DataFrame
         with tempfile.NamedTemporaryFile(suffix=".parquet") as temp_file:
@@ -211,7 +234,7 @@ class ChunkerService:
         if module_type == "langchain_chunk":
             # Use langchain chunker
             result = langchain_chunk(
-                parsed_result=parsed_data,
+                parsed_data,
                 chunk_method=chunk_method,
                 **chunker_params
             )
@@ -219,7 +242,7 @@ class ChunkerService:
         elif module_type == "llama_index_chunk":
             # Use llama_index chunker
             result = llama_index_chunk(
-                parsed_result=parsed_data,
+                parsed_data,
                 chunk_method=chunk_method,
                 **chunker_params
             )
@@ -249,13 +272,17 @@ class ChunkerService:
     ) -> FileChunkResult:
         """Create a failed chunk result record"""
         
+        if chunker.id is None:
+            raise ValueError("Chunker ID cannot be None")
+        
         chunk_result = FileChunkResult(
             file_id=parse_result.file_id,
-            file_parse_result_id=parse_result.id,
+            file_parse_result_id=parse_result.id if parse_result.id is not None else 0,
             chunker_id=chunker.id,
             bucket="rag-chunked-files",
             object_key=f"chunked/{parse_result.file_id}/{parse_result.id}/{chunker.name}.parquet",
             status=ChunkStatus.FAILED,
+            chunked_at=None,
             error_message=error_message
         )
         session.add(chunk_result)
@@ -285,7 +312,7 @@ class ChunkerService:
         if status:
             statement = statement.where(FileChunkResult.status == status)
             
-        return session.exec(statement).all()
+        return list(session.exec(statement).all())
     
     def get_chunked_data(
         self,

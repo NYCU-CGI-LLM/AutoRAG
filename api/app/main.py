@@ -16,7 +16,8 @@ from app.routers import (
     retriever,
     chat,
     evaluation,
-    utilities
+    utilities,
+    dev
 )
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
@@ -52,6 +53,7 @@ app.include_router(retriever.router)
 app.include_router(chat.router)
 app.include_router(evaluation.router)
 app.include_router(utilities.router)
+app.include_router(dev.router)
 
 @app.get("/")
 async def root():
