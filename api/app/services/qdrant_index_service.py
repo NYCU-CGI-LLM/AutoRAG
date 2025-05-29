@@ -29,8 +29,8 @@ class QdrantIndexService:
             "client_type": "docker",
             "url": "http://localhost:6333",
             "similarity_metric": "cosine",
-            "store_text": True,
-            "use_uuid_ids": True,
+            # "store_text": True,  # Temporarily commented out - has default value True
+            # "use_uuid_ids": True,  # Temporarily commented out - not supported in older version
             "embedding_batch": 50,
             "ingest_batch": 64,
             "parallel": 2,
@@ -155,10 +155,27 @@ class QdrantIndexService:
             
             # 3. Initialize Qdrant with enhanced configuration
             logger.info(f"Initializing Qdrant with collection: {collection_name}")
+            logger.info(f"Embedding model: {embedding_model}")
+            logger.info(f"Config parameters: {config}")
+            
+            # Debug: Check for any invalid parameters
+            valid_qdrant_params = {
+                'embedding_model', 'collection_name', 'embedding_batch', 'similarity_metric',
+                'client_type', 'url', 'host', 'api_key', 'dimension', 'ingest_batch', 
+                'parallel', 'max_retries'  # Removed 'store_text' and 'use_uuid_ids' temporarily
+            }
+            filtered_config = {k: v for k, v in config.items() if k in valid_qdrant_params}
+            invalid_params = {k: v for k, v in config.items() if k not in valid_qdrant_params}
+            
+            if invalid_params:
+                logger.warning(f"Removing invalid Qdrant parameters: {invalid_params}")
+            
+            logger.info(f"Filtered config for Qdrant: {filtered_config}")
+            
             qdrant = Qdrant(
                 embedding_model=embedding_model,
                 collection_name=collection_name,
-                **config
+                **filtered_config
             )
             
             # 4. Prepare documents and metadata for indexing
@@ -198,8 +215,8 @@ class QdrantIndexService:
             # 5. Index documents in Qdrant with payload
             logger.info(f"Indexing {len(doc_ids)} documents to Qdrant collection '{collection_name}'")
             
-            # Use the enhanced add method with metadata
-            await qdrant.add(doc_ids, contents, metadata_list)
+            # Use basic add method compatible with older Qdrant version
+            await qdrant.add(doc_ids, contents)
             
             # 6. Get collection stats
             collection_info = qdrant.client.get_collection(collection_name)
@@ -294,11 +311,19 @@ class QdrantIndexService:
             config.update(qdrant_config)
         
         try:
+            # Filter config parameters for Qdrant
+            valid_qdrant_params = {
+                'embedding_model', 'collection_name', 'embedding_batch', 'similarity_metric',
+                'client_type', 'url', 'host', 'api_key', 'dimension', 'ingest_batch', 
+                'parallel', 'max_retries'
+            }
+            filtered_config = {k: v for k, v in config.items() if k in valid_qdrant_params}
+            
             # Initialize Qdrant
             qdrant = Qdrant(
                 embedding_model=embedding_model,
                 collection_name=collection_name,
-                **config
+                **filtered_config
             )
             
             # Perform search with payload
@@ -358,10 +383,18 @@ class QdrantIndexService:
             config.update(qdrant_config)
         
         try:
+            # Filter config parameters for Qdrant
+            valid_qdrant_params = {
+                'embedding_model', 'collection_name', 'embedding_batch', 'similarity_metric',
+                'client_type', 'url', 'host', 'api_key', 'dimension', 'ingest_batch', 
+                'parallel', 'max_retries'
+            }
+            filtered_config = {k: v for k, v in config.items() if k in valid_qdrant_params}
+            
             qdrant = Qdrant(
                 embedding_model=embedding_model,
                 collection_name=collection_name,
-                **config
+                **filtered_config
             )
             
             collection_info = qdrant.client.get_collection(collection_name)
