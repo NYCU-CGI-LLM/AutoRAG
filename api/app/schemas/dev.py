@@ -139,10 +139,10 @@ class ChunkedDataResponse(BaseModel):
 # Index-related schemas (moved from schemas/dev/index.py)
 class CreateIndexRequest(BaseModel):
     """Request schema for creating vector index from chunk results"""
-    chunk_result_ids: List[int]
+    chunk_result_ids: List[UUID]
     collection_name: str
-    embedding_model: str = "openai_embed_3_large"
-    qdrant_config: Optional[Dict[str, Any]] = None
+    embedding_model: Optional[str] = None  # Uses default: openai_embed_3_large
+    qdrant_config: Optional[Dict[str, Any]] = None  # Uses default local docker config
     metadata_config: Optional[Dict[str, Any]] = None
 
 
@@ -150,8 +150,8 @@ class SearchRequest(BaseModel):
     """Request schema for searching in vector collection"""
     query: str
     top_k: int = 10
-    embedding_model: str = "openai_embed_3_large"
-    qdrant_config: Optional[Dict[str, Any]] = None
+    embedding_model: Optional[str] = None  # Uses default: openai_embed_3_large
+    qdrant_config: Optional[Dict[str, Any]] = None  # Uses default local docker config
     filters: Optional[Dict[str, Any]] = None
 
 

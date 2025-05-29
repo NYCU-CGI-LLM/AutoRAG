@@ -23,33 +23,9 @@ class QdrantIndexService:
     
     def __init__(self):
         self.minio_service = MinIOService()
-    
-    async def create_qdrant_index(
-        self,
-        session: Session,
-        chunk_result_ids: List[int],
-        collection_name: str,
-        embedding_model: str = "openai_embed_3_large",
-        qdrant_config: Optional[Dict[str, Any]] = None,
-        metadata_config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        Create Qdrant index from chunk results
         
-        Args:
-            session: Database session
-            chunk_result_ids: List of chunk result IDs to index
-            collection_name: Qdrant collection name
-            embedding_model: Embedding model to use
-            qdrant_config: Qdrant connection configuration
-            metadata_config: Additional metadata configuration
-            
-        Returns:
-            Indexing result with collection info
-        """
-        
-        # Default Qdrant configuration
-        default_config = {
+        # Default Qdrant configuration for single server setup
+        self.default_qdrant_config = {
             "client_type": "docker",
             "url": "http://localhost:6333",
             "similarity_metric": "cosine",
@@ -61,8 +37,38 @@ class QdrantIndexService:
             "max_retries": 3
         }
         
+        # Default embedding model
+        self.default_embedding_model = "openai_embed_3_large"
+    
+    async def create_qdrant_index(
+        self,
+        session: Session,
+        chunk_result_ids: List[UUID],
+        collection_name: str,
+        embedding_model: Optional[str] = None,
+        qdrant_config: Optional[Dict[str, Any]] = None,
+        metadata_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create Qdrant index from chunk results
+        
+        Args:
+            session: Database session
+            chunk_result_ids: List of chunk result IDs to index
+            collection_name: Qdrant collection name
+            embedding_model: Embedding model to use (defaults to openai_embed_3_large)
+            qdrant_config: Qdrant connection configuration (uses default if None)
+            metadata_config: Additional metadata configuration
+            
+        Returns:
+            Indexing result with collection info
+        """
+        
+        # Use defaults if not provided
+        embedding_model = embedding_model or self.default_embedding_model
+        config = self.default_qdrant_config.copy()
         if qdrant_config:
-            default_config.update(qdrant_config)
+            config.update(qdrant_config)
         
         try:
             # 1. Get chunk results from database
@@ -71,14 +77,50 @@ class QdrantIndexService:
             ).all()
             
             if len(chunk_results) != len(chunk_result_ids):
-                raise HTTPException(status_code=404, detail="Some chunk results not found")
+                missing_ids = set(chunk_result_ids) - set(cr.id for cr in chunk_results)
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Chunk results not found: {list(missing_ids)}"
+                )
             
             # Check all chunk results are successful
             failed_results = [cr for cr in chunk_results if cr.status != ChunkStatus.SUCCESS]
             if failed_results:
+                failed_info = [
+                    {"id": str(cr.id), "status": cr.status.value, "error": cr.error_message}
+                    for cr in failed_results
+                ]
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Chunk results {[cr.id for cr in failed_results]} are not successful"
+                    detail=f"Some chunk results are not successful: {failed_info}"
+                )
+            
+            # Verify all files exist in MinIO before proceeding
+            logger.info(f"Verifying {len(chunk_results)} chunk files exist in MinIO")
+            missing_files = []
+            for chunk_result in chunk_results:
+                try:
+                    # Try to get object info to check if file exists
+                    self.minio_service.client.stat_object(
+                        bucket_name=chunk_result.bucket,
+                        object_name=chunk_result.object_key
+                    )
+                except Exception:
+                    missing_files.append({
+                        "chunk_result_id": str(chunk_result.id),
+                        "bucket": chunk_result.bucket,
+                        "object_key": chunk_result.object_key,
+                        "file_name": chunk_result.file.file_name if chunk_result.file else "Unknown"
+                    })
+            
+            if missing_files:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "message": "Some chunk files are missing from MinIO storage",
+                        "missing_files": missing_files,
+                        "suggestion": "These chunk results may need to be recreated. Check if the chunking process completed successfully."
+                    }
                 )
             
             # 2. Load and combine all chunk data
@@ -86,11 +128,26 @@ class QdrantIndexService:
             all_chunks_data = []
             
             for chunk_result in chunk_results:
-                chunk_data = self._load_chunk_parquet(chunk_result)
-                # Add source metadata
-                chunk_data['source_file'] = chunk_result.file_name
-                chunk_data['chunk_result_id'] = chunk_result.id
-                all_chunks_data.append(chunk_data)
+                try:
+                    chunk_data = self._load_chunk_parquet(chunk_result)
+                    # Add source metadata
+                    chunk_data['source_file'] = chunk_result.file.file_name if chunk_result.file else 'Unknown'
+                    chunk_data['chunk_result_id'] = chunk_result.id
+                    all_chunks_data.append(chunk_data)
+                except Exception as e:
+                    logger.error(f"Failed to load chunk data for {chunk_result.id}: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail={
+                            "message": f"Failed to load chunk data for result {chunk_result.id}",
+                            "error": str(e),
+                            "file_info": {
+                                "bucket": chunk_result.bucket,
+                                "object_key": chunk_result.object_key,
+                                "status": chunk_result.status.value
+                            }
+                        }
+                    )
             
             # Combine all chunks into single DataFrame
             combined_df = pd.concat(all_chunks_data, ignore_index=True)
@@ -101,7 +158,7 @@ class QdrantIndexService:
             qdrant = Qdrant(
                 embedding_model=embedding_model,
                 collection_name=collection_name,
-                **default_config
+                **config
             )
             
             # 4. Prepare documents and metadata for indexing
@@ -145,18 +202,31 @@ class QdrantIndexService:
             await qdrant.add(doc_ids, contents, metadata_list)
             
             # 6. Get collection stats
-            collection_info = await qdrant.get_collection_info()
+            collection_info = qdrant.client.get_collection(collection_name)
+            collection_stats = {
+                "collection_name": collection_name,
+                "vectors_count": collection_info.vectors_count,
+                "indexed_vectors_count": collection_info.indexed_vectors_count,
+                "points_count": collection_info.points_count,
+                "segments_count": collection_info.segments_count,
+                "config": {
+                    "params": {
+                        "vector_size": collection_info.config.params.vectors.size,
+                        "distance": collection_info.config.params.vectors.distance.value
+                    }
+                }
+            }
             
             # 7. Save indexing metadata to MinIO
             index_metadata = {
                 "collection_name": collection_name,
                 "embedding_model": embedding_model,
-                "qdrant_config": default_config,
+                "qdrant_config": config,
                 "chunk_result_ids": chunk_result_ids,
                 "total_documents": len(doc_ids),
                 "source_files": combined_df['source_file'].unique().tolist(),
                 "indexed_at": datetime.utcnow().isoformat(),
-                "collection_info": collection_info,
+                "collection_info": collection_stats,
                 "status": "success"
             }
             
@@ -185,7 +255,7 @@ class QdrantIndexService:
                 "total_documents": len(doc_ids),
                 "embedding_model": embedding_model,
                 "metadata_key": metadata_key,
-                "collection_info": collection_info,
+                "collection_info": collection_stats,
                 "indexed_files": combined_df['source_file'].unique().tolist()
             }
             
@@ -198,7 +268,7 @@ class QdrantIndexService:
         collection_name: str,
         query: str,
         top_k: int = 10,
-        embedding_model: str = "openai_embed_3_large",
+        embedding_model: Optional[str] = None,
         qdrant_config: Optional[Dict[str, Any]] = None,
         filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
@@ -209,50 +279,52 @@ class QdrantIndexService:
             collection_name: Qdrant collection name
             query: Search query
             top_k: Number of results to return
-            embedding_model: Embedding model to use
-            qdrant_config: Qdrant connection configuration
+            embedding_model: Embedding model to use (defaults to openai_embed_3_large)
+            qdrant_config: Qdrant connection configuration (uses default if None)
             filters: Search filters for metadata
             
         Returns:
             Search results with payload data
         """
         
-        # Default Qdrant configuration
-        default_config = {
-            "client_type": "docker",
-            "url": "http://localhost:6333"
-        }
-        
+        # Use defaults if not provided
+        embedding_model = embedding_model or self.default_embedding_model
+        config = self.default_qdrant_config.copy()
         if qdrant_config:
-            default_config.update(qdrant_config)
+            config.update(qdrant_config)
         
         try:
             # Initialize Qdrant
             qdrant = Qdrant(
                 embedding_model=embedding_model,
                 collection_name=collection_name,
-                **default_config
+                **config
             )
             
             # Perform search with payload
-            results = await qdrant.query_with_payload(
-                query_texts=[query],
+            results_with_payload, scores = await qdrant.query_with_payload(
+                queries=[query],
                 top_k=top_k,
                 filters=filters
             )
             
-            # Format results
+            # Format results - results_with_payload is a list of lists
             formatted_results = []
-            for i, result in enumerate(results):
-                formatted_results.append({
-                    "rank": i + 1,
-                    "doc_id": result.get("id", ""),
-                    "content": result.get("content", ""),
-                    "score": result.get("score", 0.0),
-                    "metadata": result.get("metadata", {}),
-                    "source_file": result.get("metadata", {}).get("source_file", ""),
-                    "indexed_at": result.get("metadata", {}).get("indexed_at", "")
-                })
+            if results_with_payload and len(results_with_payload) > 0:
+                for i, (result, score) in enumerate(zip(results_with_payload[0], scores[0])):
+                    # Extract content from payload
+                    payload = result.get("payload", {})
+                    content = payload.get("text", "")
+                    
+                    formatted_results.append({
+                        "rank": i + 1,
+                        "doc_id": result.get("id", ""),
+                        "content": content,
+                        "score": score,
+                        "metadata": payload,
+                        "source_file": payload.get("source_file", ""),
+                        "indexed_at": payload.get("indexed_at", "")
+                    })
             
             logger.info(f"Search in collection '{collection_name}' returned {len(formatted_results)} results")
             return formatted_results
@@ -264,33 +336,58 @@ class QdrantIndexService:
     async def get_collection_stats(
         self,
         collection_name: str,
-        embedding_model: str = "openai_embed_3_large",
+        embedding_model: Optional[str] = None,
         qdrant_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Get statistics for Qdrant collection"""
+        """
+        Get statistics for Qdrant collection
         
-        default_config = {
-            "client_type": "docker",
-            "url": "http://localhost:6333"
-        }
+        Args:
+            collection_name: Qdrant collection name
+            embedding_model: Embedding model (defaults to openai_embed_3_large)
+            qdrant_config: Qdrant connection configuration (uses default if None)
+            
+        Returns:
+            Collection statistics and metadata
+        """
         
+        # Use defaults if not provided
+        embedding_model = embedding_model or self.default_embedding_model
+        config = self.default_qdrant_config.copy()
         if qdrant_config:
-            default_config.update(qdrant_config)
+            config.update(qdrant_config)
         
         try:
             qdrant = Qdrant(
                 embedding_model=embedding_model,
                 collection_name=collection_name,
-                **default_config
+                **config
             )
             
-            collection_info = await qdrant.get_collection_info()
+            collection_info = qdrant.client.get_collection(collection_name)
+            collection_stats = {
+                "collection_name": collection_name,
+                "vectors_count": collection_info.vectors_count,
+                "indexed_vectors_count": collection_info.indexed_vectors_count,
+                "points_count": collection_info.points_count,
+                "segments_count": collection_info.segments_count,
+                "config": {
+                    "params": {
+                        "vector_size": collection_info.config.params.vectors.size,
+                        "distance": collection_info.config.params.vectors.distance.value
+                    }
+                }
+            }
             
             return {
                 "collection_name": collection_name,
                 "embedding_model": embedding_model,
                 "status": "active",
-                "collection_info": collection_info,
+                "collection_info": collection_stats,
+                "qdrant_config": {
+                    "url": config.get("url"),
+                    "client_type": config.get("client_type")
+                },
                 "checked_at": datetime.utcnow().isoformat()
             }
             
@@ -298,7 +395,8 @@ class QdrantIndexService:
             logger.error(f"Failed to get collection stats: {str(e)}")
             return {
                 "collection_name": collection_name,
-                "status": "error",
+                "embedding_model": embedding_model,
+                "status": "error", 
                 "error": str(e),
                 "checked_at": datetime.utcnow().isoformat()
             }
@@ -307,8 +405,11 @@ class QdrantIndexService:
         """Load chunked data from MinIO parquet file"""
         
         try:
-            # Download parquet file from MinIO
-            file_data = self.minio_service.download_file(chunk_result.object_key)
+            # Download parquet file from MinIO using the correct bucket
+            file_data = self.minio_service.download_file(
+                object_name=chunk_result.object_key,
+                bucket_name=chunk_result.bucket
+            )
             
             # Load as DataFrame
             with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as temp_file:
@@ -318,12 +419,20 @@ class QdrantIndexService:
                 df = pd.read_parquet(temp_file.name)
                 os.unlink(temp_file.name)
             
-            logger.debug(f"Loaded {len(df)} chunks from {chunk_result.object_key}")
+            logger.debug(f"Loaded {len(df)} chunks from {chunk_result.bucket}/{chunk_result.object_key}")
             return df
             
         except Exception as e:
-            logger.error(f"Failed to load chunk parquet {chunk_result.object_key}: {str(e)}")
+            logger.error(f"Failed to load chunk parquet {chunk_result.bucket}/{chunk_result.object_key}: {str(e)}")
             raise HTTPException(
                 status_code=500, 
                 detail=f"Failed to load chunk data: {str(e)}"
-            ) 
+            )
+    
+    def get_default_config(self) -> Dict[str, Any]:
+        """Get the default Qdrant configuration"""
+        return self.default_qdrant_config.copy()
+    
+    def get_default_embedding_model(self) -> str:
+        """Get the default embedding model"""
+        return self.default_embedding_model 

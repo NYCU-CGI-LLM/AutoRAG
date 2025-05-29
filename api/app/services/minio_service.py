@@ -96,21 +96,23 @@ class MinIOService:
             logger.error(f"Unexpected error uploading file: {e}")
             raise HTTPException(status_code=500, detail="Failed to upload file")
     
-    def download_file(self, object_name: str) -> BinaryIO:
+    def download_file(self, object_name: str, bucket_name: Optional[str] = None) -> BinaryIO:
         """
         Download a file from MinIO
         
         Args:
             object_name: The object name in MinIO
+            bucket_name: Optional bucket name, uses default if not provided
             
         Returns:
             BinaryIO: File data stream
         """
+        bucket = bucket_name or self.bucket_name
         try:
-            response = self.client.get_object(self.bucket_name, object_name)
+            response = self.client.get_object(bucket, object_name)
             return response
         except S3Error as e:
-            logger.error(f"MinIO error downloading file: {e}")
+            logger.error(f"MinIO error downloading file from bucket '{bucket}': {e}")
             if e.code == 'NoSuchKey':
                 raise HTTPException(status_code=404, detail="File not found")
             raise HTTPException(status_code=500, detail="Failed to download file")

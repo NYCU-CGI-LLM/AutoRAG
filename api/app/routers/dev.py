@@ -11,6 +11,7 @@ from app.core.database import get_session
 from app.services.parser_service import ParserService
 from app.services.chunker_service import ChunkerService
 from app.services.qdrant_index_service import QdrantIndexService
+from app.services.minio_service import MinIOService
 from app.models.file import File
 from app.models.parser import Parser
 from app.models.chunker import Chunker
@@ -393,11 +394,46 @@ async def create_index(
     """
     Create vector index from chunk results
     
-    This endpoint:
-    1. Loads parquet files from chunk results
+    **Minimal Usage (recommended for single-server setup):**
+    ```json
+    {
+        "chunk_result_ids": [
+            "38a95a37-f359-43b8-bde0-bb6f7419f57d",
+            "f8b2c1e4-5678-9abc-def0-123456789abc"
+        ],
+        "collection_name": "my_documents"
+    }
+    ```
+    
+    **Full Configuration:**
+    ```json
+    {
+        "chunk_result_ids": [
+            "38a95a37-f359-43b8-bde0-bb6f7419f57d",
+            "f8b2c1e4-5678-9abc-def0-123456789abc"
+        ],
+        "collection_name": "my_documents",
+        "embedding_model": "openai_embed_3_large",
+        "qdrant_config": {
+            "client_type": "docker",
+            "url": "http://localhost:6333"
+        },
+        "metadata_config": {
+            "project": "my_project",
+            "version": "1.0"
+        }
+    }
+    ```
+    
+    **Process:**
+    1. Loads parquet files from specified chunk results
     2. Creates vector collection with payload support
     3. Indexes documents with rich metadata
     4. Returns indexing statistics
+    
+    **Defaults:**
+    - embedding_model: "openai_embed_3_large"
+    - qdrant_config: Local docker setup (localhost:6333)
     """
     
     try:
@@ -461,17 +497,23 @@ async def search_collection(
 @router.get("/index/stats/{collection_name}", response_model=StatsResponse)
 async def get_collection_stats(
     collection_name: str,
-    embedding_model: str = "openai_embed_3_large",
+    embedding_model: Optional[str] = None,
     qdrant_config: Optional[Dict[str, Any]] = None
 ):
     """
     Get statistics for vector collection
     
+    Args:
+        collection_name: Name of the Qdrant collection
+        embedding_model: Embedding model name (optional, uses default: openai_embed_3_large)
+        qdrant_config: Custom Qdrant configuration (optional, uses default local docker setup)
+    
     Returns:
-    - Collection metadata
-    - Document count
-    - Vector dimensions
-    - Status information
+        Collection metadata, document count, vector dimensions, and status information
+    
+    Note:
+        For single-server setup, you typically only need to provide collection_name.
+        The service will use default configuration (local docker at localhost:6333).
     """
     
     try:
@@ -492,17 +534,98 @@ async def get_collection_stats(
 @router.get("/index/health", response_model=HealthResponse)
 async def index_health_check():
     """Check indexing service health"""
+    from datetime import datetime
     return HealthResponse(
         status="healthy",
-        service="vector_index",
-        features=[
-            "auto_dimension_detection",
-            "payload_support", 
-            "uuid_id_conversion",
-            "rich_metadata",
-            "parquet_loading"
-        ]
+        message="Vector indexing service is running with features: auto_dimension_detection, payload_support, uuid_id_conversion, rich_metadata, parquet_loading",
+        timestamp=datetime.utcnow().isoformat()
     )
+
+@router.get("/index/config")
+async def get_current_config():
+    """Get current default configuration used by the indexing service"""
+    return {
+        "default_embedding_model": qdrant_service.get_default_embedding_model(),
+        "default_qdrant_config": qdrant_service.get_default_config(),
+        "description": "These are the default values used when embedding_model or qdrant_config are not specified in requests"
+    }
+
+@router.post("/index/validate-chunks")
+async def validate_chunk_results(
+    chunk_result_ids: List[UUID],
+    session: Session = Depends(get_session)
+):
+    """
+    Validate chunk results before indexing
+    
+    Checks:
+    - Chunk results exist in database
+    - Chunk results have SUCCESS status
+    - Parquet files exist in MinIO storage
+    """
+    try:
+        minio_service = MinIOService()
+        
+        # Get chunk results from database
+        chunk_results = session.exec(
+            select(FileChunkResult).where(FileChunkResult.id.in_(chunk_result_ids))
+        ).all()
+        
+        validation_results = []
+        for chunk_id in chunk_result_ids:
+            result_info = {"chunk_result_id": str(chunk_id)}
+            
+            # Check if exists in database
+            chunk_result = next((cr for cr in chunk_results if cr.id == chunk_id), None)
+            if not chunk_result:
+                result_info.update({
+                    "exists_in_db": False,
+                    "status": "not_found",
+                    "file_exists": False,
+                    "error": "Chunk result not found in database"
+                })
+            else:
+                result_info.update({
+                    "exists_in_db": True,
+                    "status": chunk_result.status.value,
+                    "bucket": chunk_result.bucket,
+                    "object_key": chunk_result.object_key,
+                    "file_name": chunk_result.file.file_name if chunk_result.file else "Unknown",
+                    "chunked_at": chunk_result.chunked_at.isoformat() if chunk_result.chunked_at else None,
+                    "error_message": chunk_result.error_message
+                })
+                
+                # Check if file exists in MinIO
+                try:
+                    minio_service.client.stat_object(
+                        bucket_name=chunk_result.bucket,
+                        object_name=chunk_result.object_key
+                    )
+                    result_info["file_exists"] = True
+                except Exception as e:
+                    result_info["file_exists"] = False
+                    result_info["file_error"] = str(e)
+            
+            validation_results.append(result_info)
+        
+        # Summary
+        total_count = len(chunk_result_ids)
+        valid_count = sum(1 for r in validation_results 
+                         if r.get("exists_in_db") and r.get("status") == "success" and r.get("file_exists"))
+        
+        return {
+            "total_chunks": total_count,
+            "valid_chunks": valid_count,
+            "invalid_chunks": total_count - valid_count,
+            "can_proceed_with_indexing": valid_count == total_count,
+            "validation_results": validation_results
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Validation failed: {str(e)}"
+        )
 
 # Example usage endpoints for documentation
 @router.get("/index/examples/config", response_model=ConfigExampleResponse)
@@ -533,27 +656,37 @@ async def get_example_request():
     """Get example index request"""
     return RequestExampleResponse(
         create_index={
-            "chunk_result_ids": [1, 2, 3],
+            # Minimal request - only required fields
+            "chunk_result_ids": [
+                "38a95a37-f359-43b8-bde0-bb6f7419f57d",
+                "f8b2c1e4-5678-9abc-def0-123456789abc"
+            ],
             "collection_name": "my_documents",
-            "embedding_model": "openai_embed_3_large",
-            "qdrant_config": {
-                "client_type": "docker",
-                "url": "http://localhost:6333"
-            },
-            "metadata_config": {
-                "project": "rag_system",
-                "version": "1.0",
-                "category": "technical_docs"
-            }
+            
+            # Optional fields - uses defaults if not provided
+            # "embedding_model": "openai_embed_3_large",  # default
+            # "qdrant_config": {  # default: local docker
+            #     "client_type": "docker",
+            #     "url": "http://localhost:6333"
+            # },
+            # "metadata_config": {  # optional custom metadata
+            #     "project": "rag_system",
+            #     "version": "1.0",
+            #     "category": "technical_docs"
+            # }
         },
         search={
+            # Minimal search request
             "query": "What is machine learning?",
             "top_k": 10,
-            "embedding_model": "openai_embed_3_large",
-            "filters": {
-                "source_file": "ml_guide.pdf",
-                "doc_type": "chunk"
-            }
+            
+            # Optional fields - uses defaults if not provided
+            # "embedding_model": "openai_embed_3_large",  # default
+            # "qdrant_config": {},  # default: local docker
+            # "filters": {  # optional metadata filters
+            #     "source_file": "ml_guide.pdf",
+            #     "doc_type": "chunk"
+            # }
         }
     )
 
