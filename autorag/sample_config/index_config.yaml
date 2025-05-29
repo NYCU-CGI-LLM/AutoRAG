@@ -12,7 +12,6 @@ modules:
     vectordb_type: pinecone
     embedding_model: openai_embed_3_large
     collection_name: my_documents_pinecone
-    dimension: 3072
     similarity_metric: cosine
     cloud: aws
     region: us-east-1
@@ -23,7 +22,6 @@ modules:
     vectordb_type: qdrant
     embedding_model: openai_embed_3_small
     collection_name: my_documents_qdrant
-    dimension: 1536
     similarity_metric: cosine
     client_type: docker
     url: http://localhost:6333 

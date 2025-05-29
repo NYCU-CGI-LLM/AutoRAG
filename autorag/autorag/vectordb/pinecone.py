@@ -17,7 +17,7 @@ class Pinecone(BaseVectorStore):
 		embedding_model: Union[str, List[dict]],
 		index_name: str,
 		embedding_batch: int = 100,
-		dimension: int = 1536,
+		dimension: Optional[int] = None,  # Changed to Optional to enable auto-detection
 		similarity_metric: str = "cosine",  # "cosine", "dotproduct", "euclidean"
 		cloud: Optional[str] = "aws",
 		region: Optional[str] = "us-east-1",
@@ -40,6 +40,20 @@ class Pinecone(BaseVectorStore):
 			similarity_metric = "euclidean"
 
 		if not self.client.has_index(index_name):
+			# Auto-detect dimension if not explicitly provided
+			if dimension is None:
+				logger.info(f"Auto-detecting embedding dimension for model: {embedding_model}")
+				try:
+					# Get a test embedding to determine dimension
+					test_embedding_result: List[float] = self.embedding.get_query_embedding("test")
+					dimension = len(test_embedding_result)
+					logger.info(f"Auto-detected embedding dimension: {dimension}")
+				except Exception as e:
+					logger.warning(f"Failed to auto-detect dimension: {e}. Falling back to default 1536.")
+					dimension = 1536
+			else:
+				logger.info(f"Using explicitly specified dimension: {dimension}")
+			
 			self.client.create_index(
 				name=index_name,
 				dimension=dimension,
@@ -50,6 +64,17 @@ class Pinecone(BaseVectorStore):
 				),
 				deletion_protection=deletion_protection,
 			)
+		else:
+			# Index already exists, validate dimension if explicitly provided
+			if dimension is not None:
+				index_stats = self.client.describe_index(index_name)
+				existing_dimension = index_stats.dimension
+				if existing_dimension != dimension:
+					logger.warning(
+						f"Specified dimension ({dimension}) doesn't match existing index dimension ({existing_dimension}). "
+						f"Using existing index dimension."
+					)
+		
 		self.index = self.client.Index(index_name)
 
 	async def add(self, ids: List[str], texts: List[str]):

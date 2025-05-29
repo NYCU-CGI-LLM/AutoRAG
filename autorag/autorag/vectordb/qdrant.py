@@ -11,7 +11,7 @@ from qdrant_client.models import (
 	SearchRequest,
 )
 
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 from autorag.vectordb import BaseVectorStore
 
@@ -29,7 +29,7 @@ class Qdrant(BaseVectorStore):
 		url: str = "http://localhost:6333",
 		host: str = "",
 		api_key: str = "",
-		dimension: int = 1536,
+		dimension: Optional[int] = None,
 		ingest_batch: int = 64,
 		parallel: int = 1,
 		max_retries: int = 3,
@@ -69,6 +69,18 @@ class Qdrant(BaseVectorStore):
 			)
 
 		if not self.client.collection_exists(collection_name):
+			if dimension is None:
+				logger.info(f"Auto-detecting embedding dimension for model: {embedding_model}")
+				try:
+					test_embedding_result: List[float] = self.embedding.get_query_embedding("test")
+					dimension = len(test_embedding_result)
+					logger.info(f"Auto-detected embedding dimension: {dimension}")
+				except Exception as e:
+					logger.warning(f"Failed to auto-detect dimension: {e}. Falling back to default 1536.")
+					dimension = 1536
+			else:
+				logger.info(f"Using explicitly specified dimension: {dimension}")
+			
 			self.client.create_collection(
 				collection_name,
 				vectors_config=VectorParams(
@@ -76,6 +88,16 @@ class Qdrant(BaseVectorStore):
 					distance=distance,
 				),
 			)
+		else:
+			if dimension is not None:
+				existing_collection = self.client.get_collection(collection_name)
+				existing_dimension = existing_collection.config.params.vectors.size
+				if existing_dimension != dimension:
+					logger.warning(
+						f"Specified dimension ({dimension}) doesn't match existing collection dimension ({existing_dimension}). "
+						f"Using existing collection dimension."
+					)
+			
 		self.collection = self.client.get_collection(collection_name)
 
 	async def add(self, ids: List[str], texts: List[str]):
