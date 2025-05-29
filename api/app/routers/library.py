@@ -206,7 +206,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
 
-@router.get("/{library_id}/files")
+@router.get("/{library_id}/files", include_in_schema=False)
 async def list_library_files(
     library_id: UUID, 
     session: Session = Depends(get_session)

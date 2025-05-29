@@ -68,10 +68,25 @@ def vectordb_index(
         # Add documents to vector database
         if asyncio.iscoroutinefunction(vectordb.add):
             loop = asyncio.get_event_loop()
-            loop.run_until_complete(vectordb.add(doc_ids, contents))
+            
+            # Check if vectordb supports metadata (like Qdrant with payload)
+            if vectordb_type.lower() == "qdrant":
+                # Qdrant supports payload - pass metadata
+                loop.run_until_complete(vectordb.add(doc_ids, contents, metadata_list))
+            else:
+                # Other vectordbs - use traditional method
+                loop.run_until_complete(vectordb.add(doc_ids, contents))
         else:
             # For synchronous add methods
-            vectordb.add(doc_ids, contents)
+            if hasattr(vectordb, 'add') and vectordb_type.lower() == "qdrant":
+                # Try to pass metadata if supported
+                try:
+                    vectordb.add(doc_ids, contents, metadata_list)
+                except TypeError:
+                    # Fallback if method signature doesn't support metadata
+                    vectordb.add(doc_ids, contents)
+            else:
+                vectordb.add(doc_ids, contents)
         
         logger.info(f"Successfully indexed {len(doc_ids)} documents to {vectordb_type}")
         
@@ -89,7 +104,8 @@ def vectordb_index(
                 "vectordb_type": vectordb_type,
                 "embedding_model": embedding_model,
                 "collection_name": collection_name,
-                "index_type": "vector"
+                "index_type": "vector",
+                "supports_payload": vectordb_type.lower() == "qdrant"  # Track payload support
             })
             updated_metadata_list.append(updated_metadata)
         

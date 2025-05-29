@@ -1,7 +1,7 @@
 """
-Development API schemas for parser and chunker testing functionality
+Development API schemas for testing parser and chunker functionality
 """
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel
 
@@ -81,7 +81,7 @@ class HealthResponse(BaseModel):
     timestamp: str
 
 
-# Chunker related schemas
+# Chunker-related schemas
 class ChunkRequest(BaseModel):
     """Request schema for chunking parsed results with a specific chunker"""
     parse_result_ids: List[UUID]
@@ -133,4 +133,64 @@ class ChunkedDataResponse(BaseModel):
     chunk_result_id: UUID
     total_chunks: Optional[int] = None
     columns: Optional[List[str]] = None
-    preview_data: Optional[List[dict]] = None 
+    preview_data: Optional[List[dict]] = None
+
+
+# Index-related schemas (moved from schemas/dev/index.py)
+class CreateIndexRequest(BaseModel):
+    """Request schema for creating vector index from chunk results"""
+    chunk_result_ids: List[int]
+    collection_name: str
+    embedding_model: str = "openai_embed_3_large"
+    qdrant_config: Optional[Dict[str, Any]] = None
+    metadata_config: Optional[Dict[str, Any]] = None
+
+
+class SearchRequest(BaseModel):
+    """Request schema for searching in vector collection"""
+    query: str
+    top_k: int = 10
+    embedding_model: str = "openai_embed_3_large"
+    qdrant_config: Optional[Dict[str, Any]] = None
+    filters: Optional[Dict[str, Any]] = None
+
+
+class IndexResponse(BaseModel):
+    """Response schema for index creation results"""
+    status: str
+    collection_name: str
+    total_documents: int
+    embedding_model: str
+    metadata_key: str
+    collection_info: Dict[str, Any]
+    indexed_files: List[str]
+
+
+class SearchResponse(BaseModel):
+    """Response schema for vector search results"""
+    results: List[Dict[str, Any]]
+    total_results: int
+    query: str
+    collection_name: str
+
+
+class StatsResponse(BaseModel):
+    """Response schema for collection statistics"""
+    collection_name: str
+    embedding_model: str
+    status: str
+    collection_info: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    checked_at: str
+
+
+class ConfigExampleResponse(BaseModel):
+    """Response schema for example configurations"""
+    local_docker: Dict[str, Any]
+    cloud: Dict[str, Any]
+
+
+class RequestExampleResponse(BaseModel):
+    """Response schema for example requests"""
+    create_index: Dict[str, Any]
+    search: Dict[str, Any] 

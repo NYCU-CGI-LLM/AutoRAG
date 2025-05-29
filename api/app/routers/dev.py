@@ -2,14 +2,15 @@
 Development API endpoints for testing parser and chunker functionality
 """
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
 from app.core.database import get_session 
 from app.services.parser_service import ParserService
 from app.services.chunker_service import ChunkerService
+from app.services.qdrant_index_service import QdrantIndexService
 from app.models.file import File
 from app.models.parser import Parser
 from app.models.chunker import Chunker
@@ -29,11 +30,22 @@ from app.schemas.dev import (
     ChunkerInfo,
     ChunkResultInfo,
     ChunkedDataResponse,
+    # Index-related schemas
+    CreateIndexRequest,
+    SearchRequest,
+    IndexResponse,
+    SearchResponse,
+    StatsResponse,
+    ConfigExampleResponse,
+    RequestExampleResponse
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dev", tags=["dev"])
+
+# Initialize services
+qdrant_service = QdrantIndexService()
 
 # Parser endpoints
 @router.get("/parser/files", response_model=List[FileInfo])
@@ -371,6 +383,179 @@ async def get_chunked_data_preview(
             chunk_result_id=result_id
         )
 
+
+# Index endpoints (moved from dev/index.py)
+@router.post("/index", response_model=IndexResponse)
+async def create_index(
+    request: CreateIndexRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Create vector index from chunk results
+    
+    This endpoint:
+    1. Loads parquet files from chunk results
+    2. Creates vector collection with payload support
+    3. Indexes documents with rich metadata
+    4. Returns indexing statistics
+    """
+    
+    try:
+        result = await qdrant_service.create_qdrant_index(
+            session=session,
+            chunk_result_ids=request.chunk_result_ids,
+            collection_name=request.collection_name,
+            embedding_model=request.embedding_model,
+            qdrant_config=request.qdrant_config,
+            metadata_config=request.metadata_config
+        )
+        
+        return IndexResponse(**result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create index: {str(e)}"
+        )
+
+@router.post("/index/search/{collection_name}", response_model=SearchResponse)
+async def search_collection(
+    collection_name: str,
+    request: SearchRequest
+):
+    """
+    Search in vector collection with payload support
+    
+    Returns:
+    - Ranked search results
+    - Original document content
+    - Rich metadata (source files, indexing info, etc.)
+    - Similarity scores
+    """
+    
+    try:
+        results = await qdrant_service.search_qdrant_collection(
+            collection_name=collection_name,
+            query=request.query,
+            top_k=request.top_k,
+            embedding_model=request.embedding_model,
+            qdrant_config=request.qdrant_config,
+            filters=request.filters
+        )
+        
+        return SearchResponse(
+            results=results,
+            total_results=len(results),
+            query=request.query,
+            collection_name=collection_name
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search failed: {str(e)}"
+        )
+
+@router.get("/index/stats/{collection_name}", response_model=StatsResponse)
+async def get_collection_stats(
+    collection_name: str,
+    embedding_model: str = "openai_embed_3_large",
+    qdrant_config: Optional[Dict[str, Any]] = None
+):
+    """
+    Get statistics for vector collection
+    
+    Returns:
+    - Collection metadata
+    - Document count
+    - Vector dimensions
+    - Status information
+    """
+    
+    try:
+        stats = await qdrant_service.get_collection_stats(
+            collection_name=collection_name,
+            embedding_model=embedding_model,
+            qdrant_config=qdrant_config
+        )
+        
+        return StatsResponse(**stats)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get stats: {str(e)}"
+        )
+
+@router.get("/index/health", response_model=HealthResponse)
+async def index_health_check():
+    """Check indexing service health"""
+    return HealthResponse(
+        status="healthy",
+        service="vector_index",
+        features=[
+            "auto_dimension_detection",
+            "payload_support", 
+            "uuid_id_conversion",
+            "rich_metadata",
+            "parquet_loading"
+        ]
+    )
+
+# Example usage endpoints for documentation
+@router.get("/index/examples/config", response_model=ConfigExampleResponse)
+async def get_example_config():
+    """Get example vector database configuration"""
+    return ConfigExampleResponse(
+        local_docker={
+            "client_type": "docker",
+            "url": "http://localhost:6333",
+            "similarity_metric": "cosine",
+            "store_text": True,
+            "use_uuid_ids": True,
+            "embedding_batch": 50,
+            "ingest_batch": 64
+        },
+        cloud={
+            "client_type": "cloud",
+            "host": "your-cluster.qdrant.cloud",
+            "api_key": "${QDRANT_API_KEY}",
+            "similarity_metric": "cosine",
+            "store_text": True,
+            "use_uuid_ids": True
+        }
+    )
+
+@router.get("/index/examples/request", response_model=RequestExampleResponse)
+async def get_example_request():
+    """Get example index request"""
+    return RequestExampleResponse(
+        create_index={
+            "chunk_result_ids": [1, 2, 3],
+            "collection_name": "my_documents",
+            "embedding_model": "openai_embed_3_large",
+            "qdrant_config": {
+                "client_type": "docker",
+                "url": "http://localhost:6333"
+            },
+            "metadata_config": {
+                "project": "rag_system",
+                "version": "1.0",
+                "category": "technical_docs"
+            }
+        },
+        search={
+            "query": "What is machine learning?",
+            "top_k": 10,
+            "embedding_model": "openai_embed_3_large",
+            "filters": {
+                "source_file": "ml_guide.pdf",
+                "doc_type": "chunk"
+            }
+        }
+    )
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
