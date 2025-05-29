@@ -19,7 +19,7 @@ from autorag.vectordb.qdrant import Qdrant
 
 logger = logging.getLogger(__name__)
 
-class QdrantIndexService:
+class IndexService:
     """Enhanced service for Qdrant indexing operations with database integration"""
     
     def __init__(self):

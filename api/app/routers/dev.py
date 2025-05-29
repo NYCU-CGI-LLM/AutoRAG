@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session 
 from app.services.parser_service import ParserService
 from app.services.chunker_service import ChunkerService
-from app.services.qdrant_index_service import QdrantIndexService
+from app.services.index_service import IndexService
 from app.services.minio_service import MinIOService
 from app.models.file import File
 from app.models.parser import Parser
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dev", tags=["dev"])
 
 # Initialize services
-qdrant_service = QdrantIndexService()
+index_service = IndexService()
 
 # Parser endpoints
 @router.get("/parser/files", response_model=List[FileInfo])
@@ -437,7 +437,7 @@ async def create_index(
     """
     
     try:
-        result = await qdrant_service.create_qdrant_index(
+        result = await index_service.create_qdrant_index(
             session=session,
             chunk_result_ids=request.chunk_result_ids,
             collection_name=request.collection_name,
@@ -472,7 +472,7 @@ async def search_collection(
     """
     
     try:
-        results = await qdrant_service.search_qdrant_collection(
+        results = await index_service.search_qdrant_collection(
             collection_name=collection_name,
             query=request.query,
             top_k=request.top_k,
@@ -517,7 +517,7 @@ async def get_collection_stats(
     """
     
     try:
-        stats = await qdrant_service.get_collection_stats(
+        stats = await index_service.get_collection_stats(
             collection_name=collection_name,
             embedding_model=embedding_model,
             qdrant_config=qdrant_config
@@ -545,8 +545,8 @@ async def index_health_check():
 async def get_current_config():
     """Get current default configuration used by the indexing service"""
     return {
-        "default_embedding_model": qdrant_service.get_default_embedding_model(),
-        "default_qdrant_config": qdrant_service.get_default_config(),
+        "default_embedding_model": index_service.get_default_embedding_model(),
+        "default_qdrant_config": index_service.get_default_config(),
         "description": "These are the default values used when embedding_model or qdrant_config are not specified in requests"
     }
 

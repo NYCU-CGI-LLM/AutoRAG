@@ -17,7 +17,7 @@ from app.models.file_chunk_result import FileChunkResult, ChunkStatus
 
 from app.services.parser_service import ParserService
 from app.services.chunker_service import ChunkerService
-from app.services.qdrant_index_service import QdrantIndexService
+from app.services.index_service import IndexService
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class RetrieverService:
     def __init__(self):
         self.parser_service = ParserService()
         self.chunker_service = ChunkerService()
-        self.index_service = QdrantIndexService()
+        self.index_service = IndexService()
     
     def get_retriever_by_id(self, session: Session, retriever_id: UUID) -> Optional[Retriever]:
         """Get retriever by ID"""
@@ -506,7 +506,7 @@ class RetrieverService:
             # Delete Qdrant collection if requested and exists
             if delete_collection and retriever.collection_name:
                 try:
-                    # We'd need to implement collection deletion in QdrantIndexService
+                    # We'd need to implement collection deletion in IndexService
                     logger.info(f"Would delete Qdrant collection: {retriever.collection_name}")
                 except Exception as e:
                     logger.warning(f"Failed to delete Qdrant collection: {e}")
