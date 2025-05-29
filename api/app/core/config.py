@@ -4,6 +4,14 @@ from typing import List
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+
+# Explicitly load .env.dev file before Settings instantiation
+env_file_path = Path(__file__).resolve().parent.parent.parent / '.env.dev'
+print(f"Loading .env.dev from: {env_file_path}")
+print(f"File exists: {env_file_path.exists()}")
+load_dotenv(env_file_path)
+print(f"OPENAI_API_KEY loaded: {os.getenv('OPENAI_API_KEY', 'NOT FOUND')[:20] if os.getenv('OPENAI_API_KEY') else 'NOT FOUND'}...")
 
 class Settings(BaseSettings):
     # Pydantic v2 settings: load environment variables from .env.dev
@@ -47,4 +55,41 @@ logger.info("Before Settings instantiation in config.py")
 logger.info(f"SECRET_KEY in config.py (os.getenv): {os.getenv('SECRET_KEY')}")
 
 settings = Settings()
-logger.info("After Settings instantiation in config.py") 
+logger.info("After Settings instantiation in config.py")
+
+# Print all configuration values for debugging
+logger.info("=== API SERVER CONFIGURATION ===")
+logger.info(f"App Name: {settings.app_name}")
+logger.info(f"App Version: {settings.app_version}")
+logger.info(f"Environment: {settings.autorag_api_env}")
+logger.info(f"Work Directory: {settings.work_dir}")
+logger.info(f"API V1 String: {settings.API_V1_STR}")
+logger.info(f"CORS Origins: {settings.cors_allow_origins}")
+logger.info(f"Secret Key: {settings.secret_key[:20]}...")
+logger.info(f"Token Expire Minutes: {settings.access_token_expire_minutes}")
+
+logger.info("=== MINIO CONFIGURATION ===")
+logger.info(f"MinIO Endpoint: {settings.minio_endpoint}")
+logger.info(f"MinIO Access Key: {settings.minio_access_key}")
+logger.info(f"MinIO Secret Key: {settings.minio_secret_key[:10]}...")
+logger.info(f"MinIO Secure: {settings.minio_secure}")
+logger.info(f"MinIO Bucket: {settings.minio_bucket_name}")
+
+logger.info("=== REDIS CONFIGURATION ===")
+logger.info(f"Redis Host: {settings.redis_host}")
+logger.info(f"Redis Port: {settings.redis_port}")
+logger.info(f"Redis DB: {settings.redis_db}")
+
+logger.info("=== CHROMADB CONFIGURATION ===")
+logger.info(f"Chroma Path: {settings.chroma_path}")
+logger.info(f"Default Embedding Model: {settings.default_embedding_model}")
+logger.info(f"Embedding Batch Size: {settings.embedding_batch_size}")
+
+logger.info("=== ENVIRONMENT VARIABLES ===")
+logger.info(f"OPENAI_API_KEY: {os.getenv('OPENAI_API_KEY', 'NOT FOUND')[:20] if os.getenv('OPENAI_API_KEY') else 'NOT FOUND'}...")
+logger.info(f"DATABASE_URL: {os.getenv('DATABASE_URL', 'NOT FOUND')}")
+logger.info(f"CELERY_BROKER_URL: {os.getenv('CELERY_BROKER_URL', 'NOT FOUND')}")
+logger.info(f"CELERY_RESULT_BACKEND: {os.getenv('CELERY_RESULT_BACKEND', 'NOT FOUND')}")
+logger.info(f"AUTORAG_API_ENV: {os.getenv('AUTORAG_API_ENV', 'NOT FOUND')}")
+logger.info(f"AUTORAG_WORK_DIR: {os.getenv('AUTORAG_WORK_DIR', 'NOT FOUND')}")
+logger.info("=== END CONFIGURATION ===") 
