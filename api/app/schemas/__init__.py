@@ -27,10 +27,23 @@ from .library import (
 )
 
 from .retriever import (
+    # Legacy schemas (for backward compatibility)
     RetrieverConfig,
     RetrieverConfigCreate,
     RetrieverConfigDetail,
     IndexingStatusUpdate,
+    # New retriever service schemas
+    RetrieverCreateRequest,
+    RetrieverBuildRequest,
+    RetrieverQueryRequest,
+    RetrieverResponse,
+    RetrieverBuildResponse,
+    RetrieverQueryResponse,
+    RetrieverStatsResponse,
+    RetrieverListResponse,
+    RetrieverStatusUpdate,
+    ComponentInfo,
+    RetrieverDetailResponse,
 )
 
 from .chat import (
@@ -62,7 +75,6 @@ from . import (
     evaluation,
     library,
     retriever,
-    retriever_service,
     utilities
 )
 
@@ -88,10 +100,23 @@ __all__ = [
     "LibraryCreate",
     "LibraryDetail",
     "FileUploadResponse",
+    # Legacy retriever schemas
     "RetrieverConfig",
     "RetrieverConfigCreate",
     "RetrieverConfigDetail",
     "IndexingStatusUpdate",
+    # New retriever service schemas
+    "RetrieverCreateRequest",
+    "RetrieverBuildRequest",
+    "RetrieverQueryRequest",
+    "RetrieverResponse",
+    "RetrieverBuildResponse",
+    "RetrieverQueryResponse",
+    "RetrieverStatsResponse",
+    "RetrieverListResponse",
+    "RetrieverStatusUpdate",
+    "ComponentInfo",
+    "RetrieverDetailResponse",
     "Chat",
     "ChatCreate",
     "ChatDetail",
@@ -114,6 +139,5 @@ __all__ = [
     "evaluation",
     "library",
     "retriever",
-    "retriever_service",
     "utilities"
 ]

@@ -731,9 +731,10 @@ async def list_retrievers_dev(
 async def create_simple_retriever(
     name: str,
     library_id: UUID,
+    auto_build: bool = True,
     session: Session = Depends(get_session)
 ):
-    """Create a simple retriever with default configurations"""
+    """Create a simple retriever with default configurations and optionally auto-build it"""
     try:
         from app.services.retriever_service import RetrieverService
         from app.services.parser_service import ParserService
@@ -798,7 +799,7 @@ async def create_simple_retriever(
             description=f"Auto-created retriever for library {library_id}"
         )
         
-        return {
+        result = {
             "success": True,
             "message": "Simple retriever created successfully",
             "retriever_id": str(retriever.id),
@@ -809,6 +810,30 @@ async def create_simple_retriever(
                 "indexer": {"id": str(indexer.id), "name": indexer.name}
             }
         }
+        
+        # Auto-build if requested
+        if auto_build:
+            try:
+                build_result = await retriever_service.build_retriever(
+                    session=session,
+                    retriever_id=retriever.id,
+                    force_rebuild=False
+                )
+                result.update({
+                    "auto_build": True,
+                    "build_status": "success",
+                    "build_result": build_result
+                })
+            except Exception as e:
+                result.update({
+                    "auto_build": True,
+                    "build_status": "failed",
+                    "build_error": str(e)
+                })
+        else:
+            result["auto_build"] = False
+        
+        return result
         
     except Exception as e:
         return {

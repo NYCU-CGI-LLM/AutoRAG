@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from app.core.database import get_session
 from app.services.retriever_service import RetrieverService
-from app.schemas.retriever_service import (
+from app.schemas.retriever import (
     RetrieverCreateRequest,
     RetrieverBuildRequest, 
     RetrieverQueryRequest,
@@ -27,20 +27,71 @@ router = APIRouter(
 # Initialize service
 retriever_service = RetrieverService()
 
-@router.post("/", response_model=RetrieverResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RetrieverBuildResponse, status_code=status.HTTP_201_CREATED)
 async def create_retriever(
     request: RetrieverCreateRequest,
     session: Session = Depends(get_session)
 ):
     """
-    Create a new retriever configuration
+    Create a new retriever configuration and automatically build it
     
-    This endpoint creates a retriever configuration that specifies how to:
-    - Parse files from a library
-    - Chunk the parsed content
-    - Index the chunks for search
+    This endpoint creates a retriever configuration and automatically executes:
+    1. Parse files from the specified library
+    2. Chunk the parsed content using the specified chunker  
+    3. Create a vector index using the specified indexer
     
-    The retriever starts in PENDING status and needs to be built before use.
+    The complete pipeline runs automatically after creation.
+    """
+    try:
+        # Step 1: Create the retriever configuration
+        retriever = retriever_service.create_retriever(
+            session=session,
+            name=request.name,
+            library_id=request.library_id,
+            parser_id=request.parser_id,
+            chunker_id=request.chunker_id,
+            indexer_id=request.indexer_id,
+            description=request.description,
+            top_k=request.top_k,
+            params=request.params,
+            collection_name=request.collection_name
+        )
+        
+        # Step 2: Automatically build the retriever (parse → chunk → index)
+        build_result = await retriever_service.build_retriever(
+            session=session,
+            retriever_id=retriever.id,
+            force_rebuild=False
+        )
+        
+        # Return the build result which includes creation and build information
+        return RetrieverBuildResponse(
+            retriever_id=str(retriever.id),
+            status="success",
+            parse_results=build_result["parse_results"],
+            chunk_results=build_result["chunk_results"], 
+            successful_chunks=build_result["successful_chunks"],
+            collection_name=build_result["collection_name"],
+            total_chunks=build_result["total_chunks"],
+            index_result=build_result["index_result"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create and build retriever: {str(e)}")
+
+@router.post("/create-only", response_model=RetrieverResponse, status_code=status.HTTP_201_CREATED)
+async def create_retriever_only(
+    request: RetrieverCreateRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Create a new retriever configuration without building it
+    
+    This endpoint only creates the retriever configuration without executing
+    the parse → chunk → index pipeline. The retriever will be in PENDING status
+    and needs to be built manually using the /build endpoint.
     """
     try:
         retriever = retriever_service.create_retriever(
