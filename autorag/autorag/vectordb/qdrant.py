@@ -38,7 +38,7 @@ class Qdrant(BaseVectorStore):
 		max_retries: int = 3,
 		store_text: bool = True,  # New parameter to control whether to store original text
 		use_uuid_ids: bool = True,  # New parameter to control ID format
-	):
+	):	
 		super().__init__(embedding_model, similarity_metric, embedding_batch)
 
 		self.collection_name = collection_name

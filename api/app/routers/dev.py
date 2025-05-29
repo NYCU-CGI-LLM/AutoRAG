@@ -690,6 +690,192 @@ async def get_example_request():
         }
     )
 
+# Retriever management endpoints (moved from dev/retriever.py)
+@router.get("/retrievers", response_model=List[Dict[str, Any]])
+async def list_retrievers_dev(
+    session: Session = Depends(get_session),
+    library_id: Optional[UUID] = Query(None, description="Filter by library ID")
+):
+    """List retrievers for development and testing"""
+    try:
+        from app.services.retriever_service import RetrieverService
+        retriever_service = RetrieverService()
+        
+        if library_id:
+            retrievers = retriever_service.get_retrievers_by_library(session, library_id)
+        else:
+            retrievers = retriever_service.get_active_retrievers(session)
+        
+        result = []
+        for retriever in retrievers:
+            result.append({
+                "id": str(retriever.id),
+                "name": retriever.name,
+                "status": retriever.status.value,
+                "library_id": str(retriever.library_id),
+                "parser_id": str(retriever.parser_id),
+                "chunker_id": str(retriever.chunker_id),
+                "indexer_id": str(retriever.indexer_id),
+                "collection_name": retriever.collection_name,
+                "total_chunks": retriever.total_chunks,
+                "indexed_at": retriever.indexed_at.isoformat() if retriever.indexed_at else None,
+                "error_message": retriever.error_message
+            })
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing retrievers: {str(e)}")
+
+@router.post("/retrievers/create-simple")
+async def create_simple_retriever(
+    name: str,
+    library_id: UUID,
+    session: Session = Depends(get_session)
+):
+    """Create a simple retriever with default configurations"""
+    try:
+        from app.services.retriever_service import RetrieverService
+        from app.services.parser_service import ParserService
+        from app.services.chunker_service import ChunkerService
+        from app.services.qdrant_index_service import QdrantIndexService
+        
+        retriever_service = RetrieverService()
+        parser_service = ParserService()
+        chunker_service = ChunkerService()
+        index_service = QdrantIndexService()
+        
+        # Get or create default components
+        parsers = parser_service.get_active_parsers(session)
+        if not parsers:
+            # Create a default parser
+            parser = parser_service.create_parser(
+                session=session,
+                name="default_pdf_parser",
+                module_type="langchain",
+                supported_mime=["application/pdf"],
+                params={"strategy": "fast"}
+            )
+        else:
+            parser = parsers[0]
+        
+        chunkers = chunker_service.get_active_chunkers(session)
+        if not chunkers:
+            # Create a default chunker
+            chunker = chunker_service.create_chunker(
+                session=session,
+                name="default_token_chunker",
+                module_type="llama_index_chunk",
+                chunk_method="Token",
+                chunk_size=1024,
+                chunk_overlap=128,
+                params={"separator": " "}
+            )
+        else:
+            chunker = chunkers[0]
+        
+        indexers = index_service.get_active_indexers(session)
+        if not indexers:
+            # Create a default indexer
+            indexer = index_service.create_indexer(
+                session=session,
+                name="default_openai_indexer",
+                index_type="vector",
+                model="openai_embed_3_large",
+                params={"similarity_metric": "cosine"}
+            )
+        else:
+            indexer = indexers[0]
+        
+        # Create retriever
+        retriever = retriever_service.create_retriever(
+            session=session,
+            name=name,
+            library_id=library_id,
+            parser_id=parser.id,
+            chunker_id=chunker.id,
+            indexer_id=indexer.id,
+            description=f"Auto-created retriever for library {library_id}"
+        )
+        
+        return {
+            "success": True,
+            "message": "Simple retriever created successfully",
+            "retriever_id": str(retriever.id),
+            "retriever_name": retriever.name,
+            "components": {
+                "parser": {"id": str(parser.id), "name": parser.name},
+                "chunker": {"id": str(chunker.id), "name": chunker.name},
+                "indexer": {"id": str(indexer.id), "name": indexer.name}
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error creating simple retriever: {str(e)}"
+        }
+
+@router.post("/retrievers/{retriever_id}/build-test")
+async def build_retriever_test(
+    retriever_id: UUID,
+    session: Session = Depends(get_session)
+):
+    """Build a retriever (test endpoint)"""
+    try:
+        from app.services.retriever_service import RetrieverService
+        retriever_service = RetrieverService()
+        
+        result = await retriever_service.build_retriever(
+            session=session,
+            retriever_id=retriever_id,
+            force_rebuild=False
+        )
+        
+        return {
+            "success": True,
+            "message": "Retriever built successfully",
+            "result": result
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error building retriever: {str(e)}"
+        }
+
+@router.post("/retrievers/{retriever_id}/query-test")
+async def query_retriever_test(
+    retriever_id: UUID,
+    query: str,
+    top_k: int = 5,
+    session: Session = Depends(get_session)
+):
+    """Query a retriever (test endpoint)"""
+    try:
+        from app.services.retriever_service import RetrieverService
+        retriever_service = RetrieverService()
+        
+        results = await retriever_service.query_retriever(
+            session=session,
+            retriever_id=retriever_id,
+            query=query,
+            top_k=top_k
+        )
+        
+        return {
+            "success": True,
+            "message": f"Query returned {len(results)} results",
+            "query": query,
+            "results": results
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error querying retriever: {str(e)}"
+        }
+
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
