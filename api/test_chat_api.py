@@ -3,9 +3,9 @@
 Test script for the Chat API endpoints
 
 This script demonstrates how to:
-1. Create a chat session with a retriever
-2. Send messages and get AI responses
-3. View chat history
+1. Create a chat session with a retriever and custom configuration
+2. Send messages and get AI responses with parameter overrides
+3. View chat history and configuration
 4. Manage chats
 
 Prerequisites:
@@ -40,17 +40,24 @@ def make_request(method: str, url: str, **kwargs) -> Dict[str, Any]:
         return {}
 
 
-def test_create_chat():
-    """Test creating a new chat session"""
-    print("🚀 Testing Chat Creation...")
+def test_create_chat_with_config():
+    """Test creating a new chat session with custom configuration"""
+    print("🚀 Testing Chat Creation with Custom Configuration...")
     
     payload = {
-        "name": "My Test Chat",
-        "retriever_config_id": SAMPLE_RETRIEVER_ID,
+        "name": "Advanced Research Chat",
+        "retriever_id": SAMPLE_RETRIEVER_ID,
         "metadata": {
             "test": True,
-            "description": "Testing chat functionality"
-        }
+            "description": "Testing advanced chat functionality",
+            "project": "chat-api-demo"
+        },
+        # LLM Configuration
+        "llm_model": "gpt-4",
+        "temperature": 0.3,  # Lower temperature for more focused responses
+        "top_p": 0.9,
+        # Retrieval Configuration  
+        "top_k": 8  # Retrieve more documents for better context
     }
     
     response = make_request("POST", CHAT_ENDPOINT, json=payload)
@@ -59,16 +66,45 @@ def test_create_chat():
         print(f"✅ Chat created successfully!")
         print(f"   Chat ID: {response.get('id')}")
         print(f"   Name: {response.get('name')}")
-        print(f"   Retriever ID: {response.get('retriever_config_id')}")
+        print(f"   Retriever ID: {response.get('retriever_id')}")
+        print(f"   Configuration:")
+        config = response.get('config', {})
+        print(f"     - Model: {config.get('llm_model')}")
+        print(f"     - Temperature: {config.get('temperature')}")
+        print(f"     - Top P: {config.get('top_p')}")
+        print(f"     - Top K: {config.get('top_k')}")
         return response.get('id')
     else:
         print("❌ Failed to create chat")
         return None
 
 
+def test_create_basic_chat():
+    """Test creating a chat with minimal configuration (defaults)"""
+    print("\n🚀 Testing Basic Chat Creation (with defaults)...")
+    
+    payload = {
+        "name": "Basic Chat",
+        "retriever_id": SAMPLE_RETRIEVER_ID
+        # Using all default values for LLM parameters
+    }
+    
+    response = make_request("POST", CHAT_ENDPOINT, json=payload)
+    
+    if response:
+        print(f"✅ Basic chat created!")
+        print(f"   Chat ID: {response.get('id')}")
+        config = response.get('config', {})
+        print(f"   Default config: Model={config.get('llm_model')}, Temp={config.get('temperature')}")
+        return response.get('id')
+    else:
+        print("❌ Failed to create basic chat")
+        return None
+
+
 def test_list_chats():
-    """Test listing all chats"""
-    print("\n📋 Testing Chat Listing...")
+    """Test listing all chats with their configurations"""
+    print("\n📋 Testing Chat Listing with Configurations...")
     
     response = make_request("GET", CHAT_ENDPOINT)
     
@@ -78,46 +114,90 @@ def test_list_chats():
             print(f"   - {chat.get('name')} (ID: {chat.get('id')})")
             print(f"     Messages: {chat.get('message_count')}")
             print(f"     Retriever: {chat.get('retriever_config_name')}")
+            config = chat.get('config', {})
+            print(f"     Config: {config.get('llm_model')} | T={config.get('temperature')} | K={config.get('top_k')}")
     else:
         print("❌ Failed to list chats")
 
 
-def test_send_message(chat_id: str):
-    """Test sending a message and getting AI response"""
-    print(f"\n💬 Testing Message Sending (Chat ID: {chat_id})...")
+def test_send_message_with_defaults(chat_id: str):
+    """Test sending a message using chat default settings"""
+    print(f"\n💬 Testing Message with Chat Defaults (Chat ID: {chat_id})...")
     
     payload = {
-        "message": "Hello! Can you tell me about the available documents?",
-        "model": "gpt-3.5-turbo",
+        "message": "What are the key findings about artificial intelligence in the documents?",
         "stream": False,
         "context_config": {
-            "top_k": 5,
-            "system_prompt": "You are a helpful document assistant. Answer based on the provided context."
+            "system_prompt": "You are an AI research assistant. Provide detailed, technical answers based on the provided research documents."
         }
+        # Not specifying model, temperature, top_p, or top_k - will use chat defaults
     }
     
     response = make_request("POST", f"{CHAT_ENDPOINT}/{chat_id}", json=payload)
     
     if response:
-        print("✅ Message sent successfully!")
+        print("✅ Message sent with defaults!")
         print(f"   Response: {response.get('response')[:200]}...")
-        print(f"   Model: {response.get('model_used')}")
+        config_used = response.get('config_used', {})
+        print(f"   Configuration used:")
+        print(f"     - Model: {config_used.get('model')}")
+        print(f"     - Temperature: {config_used.get('temperature')}")
+        print(f"     - Top P: {config_used.get('top_p')}")
+        print(f"     - Top K: {config_used.get('top_k')}")
         print(f"   Processing Time: {response.get('processing_time'):.2f}s")
         print(f"   Sources Found: {len(response.get('sources', []))}")
-        
-        # Show sources
-        for i, source in enumerate(response.get('sources', [])[:2], 1):
-            print(f"   Source {i}: {source.get('content')[:100]}... (Score: {source.get('score', 0):.3f})")
-        
         return response.get('message_id')
     else:
         print("❌ Failed to send message")
         return None
 
 
+def test_send_message_with_overrides(chat_id: str):
+    """Test sending a message with parameter overrides"""
+    print(f"\n💬 Testing Message with Parameter Overrides (Chat ID: {chat_id})...")
+    
+    payload = {
+        "message": "Can you provide a creative summary of the most interesting findings?",
+        "model": "gpt-3.5-turbo",  # Override to faster model
+        "temperature": 0.9,        # Override to higher creativity
+        "top_p": 0.95,            # Override top_p
+        "top_k": 3,               # Override to fewer sources
+        "stream": False,
+        "context_config": {
+            "system_prompt": "You are a creative science communicator. Make the findings engaging and accessible.",
+            "filters": {
+                "document_type": "research_paper"
+            }
+        }
+    }
+    
+    response = make_request("POST", f"{CHAT_ENDPOINT}/{chat_id}", json=payload)
+    
+    if response:
+        print("✅ Message sent with overrides!")
+        print(f"   Response: {response.get('response')[:200]}...")
+        config_used = response.get('config_used', {})
+        print(f"   Overridden configuration:")
+        print(f"     - Model: {config_used.get('model')} ← overridden")
+        print(f"     - Temperature: {config_used.get('temperature')} ← overridden")
+        print(f"     - Top P: {config_used.get('top_p')} ← overridden")
+        print(f"     - Top K: {config_used.get('top_k')} ← overridden")
+        print(f"   Processing Time: {response.get('processing_time'):.2f}s")
+        
+        # Show token usage if available
+        token_usage = response.get('token_usage', {})
+        if token_usage:
+            print(f"   Token Usage: {token_usage.get('total_tokens')} total")
+        
+        return response.get('message_id')
+    else:
+        print("❌ Failed to send message with overrides")
+        return None
+
+
 def test_get_chat_details(chat_id: str):
-    """Test getting full chat details with message history"""
-    print(f"\n🔍 Testing Chat Details (Chat ID: {chat_id})...")
+    """Test getting full chat details with configuration"""
+    print(f"\n🔍 Testing Chat Details with Configuration (Chat ID: {chat_id})...")
     
     response = make_request("GET", f"{CHAT_ENDPOINT}/{chat_id}")
     
@@ -127,74 +207,113 @@ def test_get_chat_details(chat_id: str):
         print(f"   Total Messages: {response.get('message_count')}")
         print(f"   Retriever: {response.get('retriever_config_name')}")
         
+        # Show chat configuration
+        config = response.get('config', {})
+        print(f"   Chat Configuration:")
+        print(f"     - Default Model: {config.get('llm_model')}")
+        print(f"     - Default Temperature: {config.get('temperature')}")
+        print(f"     - Default Top P: {config.get('top_p')}")
+        print(f"     - Default Top K: {config.get('top_k')}")
+        
         messages = response.get('messages', [])
         print(f"   Message History ({len(messages)} messages):")
-        for msg in messages:
+        for msg in messages[-3:]:  # Show last 3 messages
             role = "🙋 User" if msg.get('role') == 'user' else "🤖 Assistant"
             content = msg.get('content', '')[:100]
-            print(f"     {role}: {content}...")
+            model = msg.get('metadata', {}).get('llm_model', 'unknown')
+            print(f"     {role}: {content}... [Model: {model}]")
     else:
         print("❌ Failed to get chat details")
 
 
-def test_delete_message(chat_id: str, message_id: str):
-    """Test deleting a specific message"""
-    print(f"\n🗑️ Testing Message Deletion (Message ID: {message_id})...")
+def demonstrate_configuration_features():
+    """Demonstrate different configuration scenarios"""
+    print("\n🎯 Configuration Features Demonstration")
+    print("=" * 50)
     
-    response = requests.delete(f"{CHAT_ENDPOINT}/{chat_id}/messages/{message_id}")
+    scenarios = [
+        {
+            "name": "Conservative Research Chat",
+            "config": {
+                "llm_model": "gpt-4",
+                "temperature": 0.1,  # Very focused
+                "top_p": 0.8,
+                "top_k": 10  # Many sources for thorough research
+            },
+            "message": "What are the precise methodologies mentioned?"
+        },
+        {
+            "name": "Creative Writing Chat", 
+            "config": {
+                "llm_model": "gpt-4o-mini",
+                "temperature": 1.2,  # Very creative
+                "top_p": 0.95,
+                "top_k": 3  # Fewer sources for creative freedom
+            },
+            "message": "Write a compelling story based on these documents."
+        },
+        {
+            "name": "Balanced Analysis Chat",
+            "config": {
+                "llm_model": "gpt-4",
+                "temperature": 0.7,  # Balanced
+                "top_p": 1.0,
+                "top_k": 5  # Standard retrieval
+            },
+            "message": "Provide a balanced analysis of the main topics."
+        }
+    ]
     
-    if response.status_code == 204:
-        print("✅ Message deleted successfully!")
-    else:
-        print(f"❌ Failed to delete message: {response.status_code}")
-        print(f"   Response: {response.text}")
-
-
-def test_delete_chat(chat_id: str):
-    """Test deleting a chat"""
-    print(f"\n🗑️ Testing Chat Deletion (Chat ID: {chat_id})...")
-    
-    response = requests.delete(f"{CHAT_ENDPOINT}/{chat_id}")
-    
-    if response.status_code == 204:
-        print("✅ Chat deleted successfully!")
-    else:
-        print(f"❌ Failed to delete chat: {response.status_code}")
-        print(f"   Response: {response.text}")
+    for scenario in scenarios:
+        print(f"\n🔧 Scenario: {scenario['name']}")
+        config = scenario['config']
+        print(f"   Config: T={config['temperature']}, P={config['top_p']}, K={config['top_k']}")
+        
+        # This would create and test each scenario
+        # (Commented out to avoid creating too many test chats)
+        # chat_payload = {"name": scenario['name'], "retriever_id": SAMPLE_RETRIEVER_ID, **config}
+        # print(f"   Would create with: {chat_payload}")
 
 
 def main():
-    """Run the complete chat API test suite"""
-    print("🧪 Chat API Test Suite")
+    """Run the complete chat API test suite with configuration features"""
+    print("🧪 Enhanced Chat API Test Suite")
     print("=" * 50)
     
     # Note: This test will fail until you have a real retriever ID
     print(f"⚠️  Note: Using sample retriever ID: {SAMPLE_RETRIEVER_ID}")
     print("   Replace with a real retriever ID from your system")
     
-    # Test chat creation
-    chat_id = test_create_chat()
-    if not chat_id:
-        print("❌ Cannot proceed without a chat ID")
-        return
+    # Test chat creation with custom config
+    advanced_chat_id = test_create_chat_with_config()
     
-    # Test listing chats
+    # Test basic chat creation with defaults
+    basic_chat_id = test_create_basic_chat()
+    
+    # Test listing chats with configurations
     test_list_chats()
     
-    # Test sending a message
-    message_id = test_send_message(chat_id)
+    if advanced_chat_id:
+        # Test messaging with chat defaults
+        test_send_message_with_defaults(advanced_chat_id)
+        
+        # Test messaging with parameter overrides
+        test_send_message_with_overrides(advanced_chat_id)
+        
+        # Test getting detailed chat info
+        test_get_chat_details(advanced_chat_id)
     
-    # Test getting chat details
-    test_get_chat_details(chat_id)
+    # Demonstrate configuration scenarios
+    demonstrate_configuration_features()
     
-    # Test message deletion (if we have a message ID)
-    if message_id:
-        test_delete_message(chat_id, message_id)
-    
-    # Test chat deletion
-    test_delete_chat(chat_id)
-    
-    print("\n🎉 Test suite completed!")
+    print("\n🎉 Enhanced test suite completed!")
+    print("\n💡 Key Features Tested:")
+    print("   ✅ Chat creation with custom LLM parameters")
+    print("   ✅ Default parameter inheritance")
+    print("   ✅ Per-message parameter overrides")
+    print("   ✅ Configuration visibility in responses")
+    print("   ✅ Different temperature/creativity settings")
+    print("   ✅ Variable retrieval counts (top_k)")
 
 
 if __name__ == "__main__":

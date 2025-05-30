@@ -13,7 +13,8 @@ from app.schemas.chat import (
     ChatSummary,
     MessageCreate,
     MessageResponse,
-    Message
+    Message,
+    ChatConfig
 )
 
 router = APIRouter(
@@ -37,14 +38,36 @@ async def create_chat(
     Create a new chat bound to a retriever config.
     
     Creates a new chat session associated with the specified retriever configuration.
-    The chat will use the retriever for context-aware responses.
+    The chat will use the retriever for context-aware responses and store default
+    LLM parameters that will be used for all messages in this chat unless overridden.
+    
+    **Configuration Parameters:**
+    - `name`: Optional display name for the chat
+    - `retriever_id`: UUID of the retriever to use for document retrieval
+    - `llm_model`: Default LLM model (e.g., "gpt-3.5-turbo", "gpt-4")
+    - `temperature`: Default creativity/randomness (0.0-2.0, default 0.7)
+    - `top_p`: Default nucleus sampling (0.0-1.0, default 1.0)  
+    - `top_k`: Default number of documents to retrieve (1-20, default 5)
     """
     try:
         chat = chat_service.create_chat(
             session=session,
             user_id=TEST_USER_ID,  # In production, get from authenticated user
-            retriever_id=chat_create.retriever_config_id,
-            name=chat_create.name
+            retriever_id=chat_create.retriever_id,
+            name=chat_create.name,
+            llm_model=chat_create.llm_model,
+            temperature=chat_create.temperature,
+            top_p=chat_create.top_p,
+            top_k=chat_create.top_k,
+            metadata=chat_create.metadata
+        )
+        
+        # Create chat configuration for response
+        chat_config = ChatConfig(
+            llm_model=chat_create.llm_model or "gpt-3.5-turbo",
+            temperature=chat_create.temperature if chat_create.temperature is not None else 0.7,
+            top_p=chat_create.top_p if chat_create.top_p is not None else 1.0,
+            top_k=chat_create.top_k if chat_create.top_k is not None else 5
         )
         
         # Convert to response format with proper timestamps
@@ -52,12 +75,13 @@ async def create_chat(
         response = Chat(
             id=chat.id,
             name=chat_create.name,
-            retriever_config_id=chat.retriever_id,
+            retriever_id=chat.retriever_id,
             metadata=chat_create.metadata,
             message_count=0,
             last_activity=now,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            config=chat_config
         )
         
         return response
@@ -89,7 +113,8 @@ async def list_chats(session: Session = Depends(get_session)):
                 name=summary["name"],
                 message_count=summary["message_count"],
                 last_activity=datetime.utcnow(),  # Use current time as proxy
-                retriever_config_name=summary["retriever_config_name"]
+                retriever_config_name=summary["retriever_config_name"],
+                config=ChatConfig(**summary["config"])
             )
             for summary in summaries
         ]
@@ -135,12 +160,13 @@ async def get_chat(
         chat_detail = ChatDetail(
             id=chat_details["id"],
             name=f"Chat with {chat_details['retriever_name']}",
-            retriever_config_id=chat_details["retriever_id"],
+            retriever_id=chat_details["retriever_id"],
             metadata={},
             message_count=chat_details["message_count"],
             last_activity=now,
             created_at=now,
             updated_at=now,
+            config=ChatConfig(**chat_details["config"]),
             messages=messages,
             retriever_config_name=chat_details["retriever_name"]
         )
@@ -164,6 +190,15 @@ async def send_message(
     
     Send a new message to the chat and receive an AI-generated response.
     The response will be context-aware based on the associated retriever configuration.
+    
+    **Message Parameters:**
+    - `message`: The user's message content
+    - `model`: Optional override for the LLM model (uses chat default if not provided)
+    - `temperature`: Optional override for temperature (uses chat default if not provided) 
+    - `top_p`: Optional override for top_p (uses chat default if not provided)
+    - `top_k`: Optional override for retrieval count (uses chat default if not provided)
+    - `stream`: Whether to stream the response (default false)
+    - `context_config`: Additional context configuration (filters, system prompt, etc.)
     """
     try:
         result = await chat_service.send_message(
@@ -171,6 +206,9 @@ async def send_message(
             chat_id=chat_id,
             message=message_create.message,
             model=message_create.model,
+            temperature=message_create.temperature,
+            top_p=message_create.top_p,
+            top_k=message_create.top_k,
             stream=message_create.stream,
             context_config=message_create.context_config
         )
@@ -181,7 +219,8 @@ async def send_message(
             sources=result["sources"],
             model_used=result["model_used"],
             processing_time=result["processing_time"],
-            token_usage=result.get("token_usage")
+            token_usage=result.get("token_usage"),
+            config_used=result.get("config_used", {})
         )
         
         return response

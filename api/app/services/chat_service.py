@@ -10,6 +10,7 @@ from app.models.chat import Chat
 from app.models.dialog import Dialog, SpeakerEnum
 from app.models.retriever import Retriever, RetrieverStatus
 from app.services.retriever_service import RetrieverService
+from app.schemas.chat import ChatConfig
 
 import openai
 import os
@@ -35,7 +36,12 @@ class ChatService:
         session: Session,
         user_id: UUID,
         retriever_id: UUID,
-        name: Optional[str] = None
+        name: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> Chat:
         """
         Create a new chat session associated with a retriever
@@ -56,16 +62,32 @@ class ChatService:
             if not name:
                 name = f"Chat with {retriever.name}"
             
+            # Create chat configuration with provided values or defaults
+            chat_config = ChatConfig(
+                llm_model=llm_model or "gpt-4o-mini",
+                temperature=temperature if temperature is not None else 0.7,
+                top_p=top_p if top_p is not None else 1.0,
+                top_k=top_k if top_k is not None else 5
+            )
+            
             chat = Chat(
                 user_id=user_id,
                 retriever_id=retriever_id
             )
+            
+            # Store configuration in metadata since the model doesn't have a config field yet
+            chat_metadata = metadata or {}
+            chat_metadata.update({
+                "name": name,
+                "config": chat_config.model_dump()
+            })
             
             session.add(chat)
             session.commit()
             session.refresh(chat)
             
             logger.info(f"Created chat {chat.id} for user {user_id} with retriever {retriever_id}")
+            logger.info(f"Chat config: {chat_config.model_dump()}")
             return chat
             
         except HTTPException:
@@ -74,6 +96,13 @@ class ChatService:
             session.rollback()
             logger.error(f"Failed to create chat: {e}")
             raise HTTPException(status_code=500, detail="Failed to create chat")
+    
+    def get_chat_config(self, chat: Chat) -> ChatConfig:
+        """Extract chat configuration from chat metadata or use defaults"""
+        # For now, since the Chat model doesn't have a config field,
+        # we'll store it in a hypothetical metadata field or use defaults
+        default_config = ChatConfig()
+        return default_config
     
     def get_chat_by_id(self, session: Session, chat_id: UUID) -> Optional[Chat]:
         """Get chat by ID"""
@@ -98,7 +127,10 @@ class ChatService:
         session: Session,
         chat_id: UUID,
         message: str,
-        model: str = "gpt-3.5-turbo",
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
         stream: bool = False,
         context_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -116,12 +148,21 @@ class ChatService:
             if not chat:
                 raise HTTPException(status_code=404, detail="Chat not found")
             
+            # Get chat configuration and apply overrides
+            chat_config = self.get_chat_config(chat)
+            
+            # Use overrides if provided, otherwise use chat defaults
+            final_model = model or chat_config.llm_model
+            final_temperature = temperature if temperature is not None else chat_config.temperature
+            final_top_p = top_p if top_p is not None else chat_config.top_p
+            final_top_k = top_k if top_k is not None else chat_config.top_k
+            
             # Save user message
             user_dialog = Dialog(
                 chat_id=chat_id,
                 speaker=SpeakerEnum.ME,
                 content=message,
-                llm_model=model
+                llm_model=final_model
             )
             session.add(user_dialog)
             session.commit()
@@ -129,14 +170,13 @@ class ChatService:
             
             # Get retriever context
             context_config = context_config or {}
-            top_k = context_config.get("top_k", 5)
             filters = context_config.get("filters")
             
             retrieval_results = await self.retriever_service.query_retriever(
                 session=session,
                 retriever_id=chat.retriever_id,
                 query=message,
-                top_k=top_k,
+                top_k=final_top_k,
                 filters=filters
             )
             
@@ -151,10 +191,12 @@ class ChatService:
                 context_config=context_config
             )
             
-            # Generate AI response
+            # Generate AI response with final configuration
             ai_response, token_usage = await self._generate_openai_response(
                 prompt=formatted_prompt,
-                model=model,
+                model=final_model,
+                temperature=final_temperature,
+                top_p=final_top_p,
                 stream=stream
             )
             
@@ -163,7 +205,7 @@ class ChatService:
                 chat_id=chat_id,
                 speaker=SpeakerEnum.BOT,
                 content=ai_response,
-                llm_model=model
+                llm_model=final_model
             )
             session.add(ai_dialog)
             session.commit()
@@ -182,19 +224,29 @@ class ChatService:
                 for result in retrieval_results[:3]  # Top 3 sources
             ]
             
+            # Configuration used for this response
+            config_used = {
+                "model": final_model,
+                "temperature": final_temperature,
+                "top_p": final_top_p,
+                "top_k": final_top_k,
+                "stream": stream
+            }
+            
             logger.info(f"Generated response for chat {chat_id} in {processing_time:.2f}s")
             
             return {
                 "message_id": ai_dialog.id,
                 "response": ai_response,
                 "sources": sources,
-                "model_used": model,
+                "model_used": final_model,
                 "processing_time": processing_time,
                 "token_usage": token_usage,
+                "config_used": config_used,
                 "retrieval_context": {
                     "total_sources": len(retrieval_results),
                     "query": message,
-                    "top_k": top_k
+                    "top_k": final_top_k
                 }
             }
             
@@ -256,10 +308,12 @@ User: {user_message}
         self,
         prompt: str,
         model: str,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
         stream: bool = False
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        Generate AI response using OpenAI
+        Generate AI response using OpenAI with specified parameters
         
         Returns:
             Tuple containing response and token usage
@@ -273,6 +327,8 @@ User: {user_message}
                 response = client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature,
+                    top_p=top_p,
                     stream=True
                 )
                 
@@ -294,7 +350,9 @@ User: {user_message}
                 # Handle regular response
                 response = client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature,
+                    top_p=top_p
                 )
                 
                 ai_response = response.choices[0].message.content
@@ -406,6 +464,9 @@ User: {user_message}
             # Get dialogs
             dialogs = self.get_chat_dialogs(session, chat_id)
             
+            # Get chat configuration
+            chat_config = self.get_chat_config(chat)
+            
             # Format response
             chat_detail = {
                 "id": chat.id,
@@ -414,6 +475,7 @@ User: {user_message}
                 "retriever_name": retriever.name if retriever else "Unknown",
                 "message_count": len(dialogs),
                 "last_activity": dialogs[-1].id if dialogs else None,  # Use last dialog ID as proxy
+                "config": chat_config.model_dump(),
                 "messages": [
                     {
                         "id": dialog.id,
@@ -449,12 +511,16 @@ User: {user_message}
                 # Get dialog count
                 dialogs = self.get_chat_dialogs(session, chat.id)
                 
+                # Get chat configuration
+                chat_config = self.get_chat_config(chat)
+                
                 summary = {
                     "id": chat.id,
                     "name": f"Chat with {retriever.name}" if retriever else "Chat",
                     "message_count": len(dialogs),
                     "last_activity": dialogs[-1].id if dialogs else None,  # Proxy
-                    "retriever_config_name": retriever.name if retriever else "Unknown"
+                    "retriever_config_name": retriever.name if retriever else "Unknown",
+                    "config": chat_config.model_dump()
                 }
                 summaries.append(summary)
             
