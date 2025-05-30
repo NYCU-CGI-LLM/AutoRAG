@@ -81,7 +81,7 @@ async def create_retriever(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create and build retriever: {str(e)}")
 
-@router.post("/create-only", response_model=RetrieverResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/create-only", response_model=RetrieverResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_retriever_only(
     request: RetrieverCreateRequest,
     session: Session = Depends(get_session)
@@ -214,7 +214,7 @@ async def get_retriever(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get retriever: {str(e)}")
 
-@router.post("/{retriever_id}/build", response_model=RetrieverBuildResponse)
+@router.post("/{retriever_id}/build", response_model=RetrieverBuildResponse, include_in_schema=False)
 async def build_retriever(
     retriever_id: UUID,
     request: RetrieverBuildRequest = RetrieverBuildRequest(),
@@ -278,7 +278,7 @@ async def query_retriever(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to query retriever: {str(e)}")
 
-@router.get("/{retriever_id}/stats", response_model=RetrieverStatsResponse)
+@router.get("/{retriever_id}/stats", response_model=RetrieverStatsResponse, include_in_schema=False)
 async def get_retriever_stats(
     retriever_id: UUID,
     session: Session = Depends(get_session)
@@ -300,7 +300,7 @@ async def get_retriever_stats(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
 
-@router.put("/{retriever_id}/status", response_model=RetrieverResponse)
+@router.put("/{retriever_id}/status", response_model=RetrieverResponse, include_in_schema=False)
 async def update_retriever_status(
     retriever_id: UUID,
     request: RetrieverStatusUpdate,
@@ -345,7 +345,7 @@ async def update_retriever_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update status: {str(e)}")
 
-@router.delete("/{retriever_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{retriever_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 async def delete_retriever(
     retriever_id: UUID,
     delete_collection: bool = True,

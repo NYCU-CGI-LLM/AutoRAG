@@ -10,3 +10,5 @@ sqlmodel
 psycopg2-binary
 alembic
 minio
+openai
+pandas

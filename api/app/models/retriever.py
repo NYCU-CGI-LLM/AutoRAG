@@ -27,7 +27,7 @@ class Retriever(SQLModel, table=True):
     
     # Primary key
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
-    name: str = Field(..., max_length=100, unique=True)
+    name: str = Field(..., max_length=100)
     description: Optional[str] = Field(None)
     
     # Index combination - what makes this retriever unique

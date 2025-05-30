@@ -80,15 +80,6 @@ class RetrieverService:
             if not indexer or indexer.status != IndexerStatus.ACTIVE:
                 raise HTTPException(status_code=404, detail="Indexer not found or inactive")
             
-            # Check if retriever name already exists
-            statement = select(Retriever).where(Retriever.name == name)
-            existing_retriever = session.exec(statement).first()
-            if existing_retriever:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Retriever with name '{name}' already exists"
-                )
-            
             # Check if this exact combination already exists
             statement = select(Retriever).where(
                 Retriever.library_id == library_id,

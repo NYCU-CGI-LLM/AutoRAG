@@ -1,7 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List
-from uuid import UUID
+from uuid import UUID, uuid4
+from datetime import datetime
+from sqlmodel import Session
 
+from app.core.database import get_session
+from app.services.chat_service import ChatService
 from app.schemas.chat import (
     Chat,
     ChatCreate,
@@ -17,85 +21,247 @@ router = APIRouter(
     tags=["Chat"],
 )
 
+# Initialize chat service
+chat_service = ChatService()
+
+# Temporary user ID for testing (in production, this would come from authentication)
+TEST_USER_ID = uuid4()
+
 
 @router.post("/", response_model=Chat, status_code=status.HTTP_201_CREATED)
-async def create_chat(chat_create: ChatCreate):
+async def create_chat(
+    chat_create: ChatCreate,
+    session: Session = Depends(get_session)
+):
     """
     Create a new chat bound to a retriever config.
     
     Creates a new chat session associated with the specified retriever configuration.
     The chat will use the retriever for context-aware responses.
     """
-    # TODO: Implement chat creation logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        chat = chat_service.create_chat(
+            session=session,
+            user_id=TEST_USER_ID,  # In production, get from authenticated user
+            retriever_id=chat_create.retriever_config_id,
+            name=chat_create.name
+        )
+        
+        # Convert to response format with proper timestamps
+        now = datetime.utcnow()
+        response = Chat(
+            id=chat.id,
+            name=chat_create.name,
+            retriever_config_id=chat.retriever_id,
+            metadata=chat_create.metadata,
+            message_count=0,
+            last_activity=now,
+            created_at=now,
+            updated_at=now
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create chat: {str(e)}")
 
 
 @router.get("/", response_model=List[ChatSummary])
-async def list_chats():
+async def list_chats(session: Session = Depends(get_session)):
     """
     List all chats.
     
     Returns a list of all chat sessions belonging to the authenticated user,
     including basic metadata and activity information.
     """
-    # TODO: Implement chat listing logic
-    return []  # Return empty list as placeholder
+    try:
+        summaries = chat_service.get_chat_summaries(
+            session=session,
+            user_id=TEST_USER_ID  # In production, get from authenticated user
+        )
+        
+        # Convert to response format
+        chat_summaries = [
+            ChatSummary(
+                id=summary["id"],
+                name=summary["name"],
+                message_count=summary["message_count"],
+                last_activity=datetime.utcnow(),  # Use current time as proxy
+                retriever_config_name=summary["retriever_config_name"]
+            )
+            for summary in summaries
+        ]
+        
+        return chat_summaries
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list chats: {str(e)}")
 
 
 @router.get("/{chat_id}", response_model=ChatDetail)
-async def get_chat(chat_id: UUID):
+async def get_chat(
+    chat_id: UUID,
+    session: Session = Depends(get_session)
+):
     """
     Get full chat object (metadata + dialogs).
     
     Returns complete chat information including all messages, metadata,
     and associated retriever configuration details.
     """
-    # TODO: Implement single chat retrieval logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        chat_details = chat_service.get_chat_with_details(
+            session=session,
+            chat_id=chat_id
+        )
+        
+        # Convert messages to proper format
+        now = datetime.utcnow()
+        messages = [
+            Message(
+                id=msg["id"],
+                chat_id=chat_id,
+                role=msg["role"],
+                content=msg["content"],
+                metadata={"llm_model": msg["llm_model"]},
+                created_at=now,
+                updated_at=now
+            )
+            for msg in chat_details["messages"]
+        ]
+        
+        chat_detail = ChatDetail(
+            id=chat_details["id"],
+            name=f"Chat with {chat_details['retriever_name']}",
+            retriever_config_id=chat_details["retriever_id"],
+            metadata={},
+            message_count=chat_details["message_count"],
+            last_activity=now,
+            created_at=now,
+            updated_at=now,
+            messages=messages,
+            retriever_config_name=chat_details["retriever_name"]
+        )
+        
+        return chat_detail
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get chat: {str(e)}")
 
 
 @router.post("/{chat_id}", response_model=MessageResponse)
-async def send_message(chat_id: UUID, message_create: MessageCreate):
+async def send_message(
+    chat_id: UUID,
+    message_create: MessageCreate,
+    session: Session = Depends(get_session)
+):
     """
     Append a dialog turn.
     
     Send a new message to the chat and receive an AI-generated response.
     The response will be context-aware based on the associated retriever configuration.
     """
-    # TODO: Implement message sending and response generation logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        result = await chat_service.send_message(
+            session=session,
+            chat_id=chat_id,
+            message=message_create.message,
+            model=message_create.model,
+            stream=message_create.stream,
+            context_config=message_create.context_config
+        )
+        
+        response = MessageResponse(
+            message_id=result["message_id"],
+            response=result["response"],
+            sources=result["sources"],
+            model_used=result["model_used"],
+            processing_time=result["processing_time"],
+            token_usage=result.get("token_usage")
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 
 @router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
-async def delete_chat(chat_id: UUID):
+async def delete_chat(
+    chat_id: UUID,
+    session: Session = Depends(get_session)
+):
     """
     Delete a chat session.
     
     Permanently delete a chat session and all its associated messages.
     This operation cannot be undone.
     """
-    # TODO: Implement chat deletion logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        success = chat_service.delete_chat(session=session, chat_id=chat_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete chat")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete chat: {str(e)}")
 
 
 @router.delete("/{chat_id}/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
-async def delete_message(chat_id: UUID, message_id: UUID):
+async def delete_message(
+    chat_id: UUID,
+    message_id: UUID,
+    session: Session = Depends(get_session)
+):
     """
     Delete a specific message from the chat.
     
     Remove a single message from the chat history.
     This operation cannot be undone.
     """
-    # TODO: Implement message deletion logic
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        success = chat_service.delete_message(
+            session=session,
+            chat_id=chat_id,
+            message_id=message_id
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete message")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete message: {str(e)}")
 
 
 @router.put("/{chat_id}/name", include_in_schema=False)
-async def update_chat_name(chat_id: UUID, name: str):
+async def update_chat_name(
+    chat_id: UUID,
+    name: str,
+    session: Session = Depends(get_session)
+):
     """
     Update chat name.
     
     Update the display name of the chat session.
     """
-    # TODO: Implement chat name update logic
-    raise HTTPException(status_code=501, detail="Not implemented yet") 
+    try:
+        chat = chat_service.update_chat_name(
+            session=session,
+            chat_id=chat_id,
+            name=name
+        )
+        
+        return {"message": f"Chat name updated to: {name}", "chat_id": str(chat.id)}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update chat name: {str(e)}") 
