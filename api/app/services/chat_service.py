@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.models.chat import Chat
 from app.models.dialog import Dialog, SpeakerEnum
 from app.models.retriever import Retriever, RetrieverStatus
+from app.models.user import User
 from app.services.retriever_service import RetrieverService
 from app.schemas.chat import ChatConfig
 
@@ -31,11 +32,37 @@ class ChatService:
         if not openai.api_key:
             logger.warning("OPENAI_API_KEY not found in environment variables")
     
+    def get_or_create_test_user(self, session: Session) -> User:
+        """
+        Get or create a test user for development/testing purposes
+        """
+        test_username = "test_user"
+        
+        # Try to find existing test user
+        statement = select(User).where(User.user_name == test_username)
+        existing_user = session.exec(statement).first()
+        
+        if existing_user:
+            return existing_user
+        
+        # Create test user if it doesn't exist
+        test_user = User(
+            user_name=test_username,
+            password="hashed_password_placeholder"  # In real app, this would be properly hashed
+        )
+        
+        session.add(test_user)
+        session.commit()
+        session.refresh(test_user)
+        
+        logger.info(f"Created test user with ID: {test_user.id}")
+        return test_user
+    
     def create_chat(
         self,
         session: Session,
-        user_id: UUID,
-        retriever_id: UUID,
+        user_id: Optional[UUID] = None,
+        retriever_id: UUID = None,
         name: Optional[str] = None,
         llm_model: Optional[str] = None,
         temperature: Optional[float] = None,
@@ -47,6 +74,18 @@ class ChatService:
         Create a new chat session associated with a retriever
         """
         try:
+            # Handle user_id - if not provided or if it doesn't exist, use test user
+            if user_id is None:
+                test_user = self.get_or_create_test_user(session)
+                user_id = test_user.id
+            else:
+                # Check if provided user_id exists
+                existing_user = session.get(User, user_id)
+                if not existing_user:
+                    logger.warning(f"User {user_id} not found, using test user instead")
+                    test_user = self.get_or_create_test_user(session)
+                    user_id = test_user.id
+            
             # Validate retriever exists and is active
             retriever = self.retriever_service.get_retriever_by_id(session, retriever_id)
             if not retriever:

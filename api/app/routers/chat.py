@@ -25,9 +25,6 @@ router = APIRouter(
 # Initialize chat service
 chat_service = ChatService()
 
-# Temporary user ID for testing (in production, this would come from authentication)
-TEST_USER_ID = uuid4()
-
 
 @router.post("/", response_model=Chat, status_code=status.HTTP_201_CREATED)
 async def create_chat(
@@ -44,7 +41,7 @@ async def create_chat(
     **Configuration Parameters:**
     - `name`: Optional display name for the chat
     - `retriever_id`: UUID of the retriever to use for document retrieval
-    - `llm_model`: Default LLM model (e.g., "gpt-3.5-turbo", "gpt-4")
+    - `llm_model`: Default LLM model (e.g., "gpt-4o-mini", "gpt-4o")
     - `temperature`: Default creativity/randomness (0.0-2.0, default 0.7)
     - `top_p`: Default nucleus sampling (0.0-1.0, default 1.0)  
     - `top_k`: Default number of documents to retrieve (1-20, default 5)
@@ -52,7 +49,7 @@ async def create_chat(
     try:
         chat = chat_service.create_chat(
             session=session,
-            user_id=TEST_USER_ID,  # In production, get from authenticated user
+            user_id=None,  # Let the service handle test user creation
             retriever_id=chat_create.retriever_id,
             name=chat_create.name,
             llm_model=chat_create.llm_model,
@@ -64,7 +61,7 @@ async def create_chat(
         
         # Create chat configuration for response
         chat_config = ChatConfig(
-            llm_model=chat_create.llm_model or "gpt-3.5-turbo",
+            llm_model=chat_create.llm_model or "gpt-4o-mini",
             temperature=chat_create.temperature if chat_create.temperature is not None else 0.7,
             top_p=chat_create.top_p if chat_create.top_p is not None else 1.0,
             top_k=chat_create.top_k if chat_create.top_k is not None else 5
@@ -97,13 +94,16 @@ async def list_chats(session: Session = Depends(get_session)):
     """
     List all chats.
     
-    Returns a list of all chat sessions belonging to the authenticated user,
+    Returns a list of all chat sessions for the test user,
     including basic metadata and activity information.
     """
     try:
+        # Get or create test user to ensure we have a valid user_id
+        test_user = chat_service.get_or_create_test_user(session)
+        
         summaries = chat_service.get_chat_summaries(
             session=session,
-            user_id=TEST_USER_ID  # In production, get from authenticated user
+            user_id=test_user.id
         )
         
         # Convert to response format

@@ -14,7 +14,7 @@ class ChatBase(BaseModel):
 
 class ChatCreate(ChatBase):
     # LLM Configuration
-    llm_model: Optional[str] = Field(default="gpt-3.5-turbo", description="LLM model to use for this chat")
+    llm_model: Optional[str] = Field(default="gpt-4o-mini", description="LLM model to use for this chat")
     temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0, description="LLM temperature (0.0-2.0)")
     top_p: Optional[float] = Field(default=1.0, ge=0.0, le=1.0, description="LLM top_p parameter (0.0-1.0)")
     
@@ -24,7 +24,7 @@ class ChatCreate(ChatBase):
 
 class ChatConfig(BaseModel):
     """Chat configuration settings that can be stored and reused"""
-    llm_model: str = Field(default="gpt-3.5-turbo", description="Default LLM model")
+    llm_model: str = Field(default="gpt-4o-mini", description="Default LLM model")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Default temperature")
     top_p: float = Field(default=1.0, ge=0.0, le=1.0, description="Default top_p")
     top_k: int = Field(default=5, ge=1, le=20, description="Default top_k for retrieval")
