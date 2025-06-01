@@ -321,7 +321,7 @@ def populate_indexers():
         {
             "name": "openai_3_large_vector",
             "index_type": "vector",
-            "model": "text-embedding-3-large",
+            "model": "openai_embed_3_large",
             "params": {
                 "dimension": 3072,
                 "similarity_metric": "cosine",
@@ -333,7 +333,7 @@ def populate_indexers():
         {
             "name": "openai_3_small_vector",
             "index_type": "vector",
-            "model": "text-embedding-3-small",
+            "model": "openai_embed_3_small",
             "params": {
                 "dimension": 1536,
                 "similarity_metric": "cosine",
