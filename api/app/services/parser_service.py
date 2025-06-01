@@ -356,4 +356,76 @@ class ParserService:
             temp_file.seek(0)
             df = pd.read_parquet(temp_file.name)
         
-        return df 
+        return df
+
+    def get_parsers_by_status(self, session: Session, status: str, limit: int = 50) -> List[Parser]:
+        """Get parsers filtered by status"""
+        try:
+            from app.models.parser import ParserStatus
+            status_enum = ParserStatus(status)
+            parsers = session.query(Parser).filter(Parser.status == status_enum).limit(limit).all()
+            return parsers
+        except ValueError:
+            # Invalid status, return empty list
+            return []
+
+    def get_parser_usage_stats(self, session: Session, parser_id: UUID) -> Dict[str, Any]:
+        """Get usage statistics for a parser"""
+        from app.models.file_parse_result import FileParseResult, ParseStatus
+        
+        # Count total parse results for this parser
+        total_parses = session.query(FileParseResult).filter(
+            FileParseResult.parser_id == parser_id
+        ).count()
+        
+        successful_parses = session.query(FileParseResult).filter(
+            FileParseResult.parser_id == parser_id,
+            FileParseResult.status == ParseStatus.SUCCESS
+        ).count()
+        
+        failed_parses = session.query(FileParseResult).filter(
+            FileParseResult.parser_id == parser_id,
+            FileParseResult.status == ParseStatus.FAILED
+        ).count()
+        
+        success_rate = (successful_parses / total_parses * 100) if total_parses > 0 else 0
+        
+        # Get most recent usage
+        latest_result = session.query(FileParseResult).filter(
+            FileParseResult.parser_id == parser_id
+        ).order_by(FileParseResult.parsed_at.desc()).first()
+        
+        last_used = latest_result.parsed_at.isoformat() if latest_result and latest_result.parsed_at else None
+        
+        # Get most common MIME types
+        from sqlalchemy import func
+        mime_types = session.query(
+            File.mime_type,
+            func.count(File.mime_type).label('count')
+        ).join(FileParseResult, File.id == FileParseResult.file_id).filter(
+            FileParseResult.parser_id == parser_id
+        ).group_by(File.mime_type).order_by(func.count(File.mime_type).desc()).limit(5).all()
+        
+        most_common_mime_types = [mime_type for mime_type, count in mime_types]
+        
+        return {
+            "total_files_parsed": total_parses,
+            "successful_parses": successful_parses,
+            "failed_parses": failed_parses,
+            "success_rate": round(success_rate, 2),
+            "last_used": last_used,
+            "most_common_mime_types": most_common_mime_types
+        }
+
+    def get_compatible_files(self, session: Session, parser_id: UUID, library_id: Optional[UUID] = None) -> List[File]:
+        """Get files that are compatible with this parser based on MIME type"""
+        parser = self.get_parser_by_id(session, parser_id)
+        if not parser:
+            return []
+        
+        query = session.query(File).filter(File.mime_type.in_(parser.supported_mime))
+        
+        if library_id:
+            query = query.filter(File.library_id == library_id)
+        
+        return query.all() 

@@ -590,3 +590,129 @@ class IndexService:
     def get_default_embedding_model(self) -> str:
         """Get the default embedding model"""
         return self.default_embedding_model 
+
+    def get_indexers_by_status(self, session: Session, status: str, limit: int = 50) -> List[Indexer]:
+        """Get indexers filtered by status"""
+        try:
+            from app.models.indexer import IndexerStatus
+            status_enum = IndexerStatus(status)
+            indexers = session.query(Indexer).filter(Indexer.status == status_enum).limit(limit).all()
+            return indexers
+        except ValueError:
+            # Invalid status, return empty list
+            return []
+
+    def get_indexer_usage_stats(self, session: Session, indexer_id: UUID) -> Dict[str, Any]:
+        """Get usage statistics for an indexer"""
+        from app.models.retriever import Retriever, RetrieverStatus
+        
+        # Count retrievers using this indexer
+        total_retrievers = session.query(Retriever).filter(
+            Retriever.indexer_id == indexer_id
+        ).count()
+        
+        active_collections = session.query(Retriever).filter(
+            Retriever.indexer_id == indexer_id,
+            Retriever.status == RetrieverStatus.ACTIVE
+        ).count()
+        
+        # Get total documents indexed across all collections
+        retrievers = session.query(Retriever).filter(
+            Retriever.indexer_id == indexer_id,
+            Retriever.total_chunks.isnot(None)
+        ).all()
+        
+        total_documents = sum(r.total_chunks for r in retrievers if r.total_chunks)
+        average_collection_size = total_documents / len(retrievers) if retrievers else 0
+        
+        # Get most recent usage
+        latest_retriever = session.query(Retriever).filter(
+            Retriever.indexer_id == indexer_id
+        ).order_by(Retriever.indexed_at.desc()).first()
+        
+        last_used = latest_retriever.indexed_at.isoformat() if latest_retriever and latest_retriever.indexed_at else None
+        
+        return {
+            "total_documents_indexed": total_documents,
+            "active_collections": active_collections,
+            "total_collections_created": total_retrievers,
+            "average_collection_size": round(average_collection_size, 2) if average_collection_size > 0 else None,
+            "last_used": last_used,
+            "index_performance_metrics": {}  # Could be expanded with actual performance data
+        }
+
+    def get_indexer_collections(self, session: Session, indexer_id: UUID) -> List[Dict[str, Any]]:
+        """Get collections created by this indexer"""
+        from app.models.retriever import Retriever
+        
+        retrievers = session.query(Retriever).filter(
+            Retriever.indexer_id == indexer_id
+        ).all()
+        
+        collections = []
+        for retriever in retrievers:
+            collections.append({
+                "name": retriever.collection_name or f"collection_{retriever.id}",
+                "retriever_id": retriever.id,
+                "document_count": retriever.total_chunks or 0,
+                "created_at": retriever.indexed_at.isoformat() if retriever.indexed_at else None,
+                "status": retriever.status.value
+            })
+        
+        return collections
+
+    def get_compatible_models(self, index_type: str) -> List[str]:
+        """Get models compatible with the specified index type"""
+        if index_type == "vector":
+            return [
+                "openai_embed_3_large",
+                "openai_embed_3_small", 
+                "openai_ada_002",
+                "huggingface_bge_large",
+                "huggingface_bge_small",
+                "sentence_transformers_all_mpnet",
+                "sentence_transformers_all_minilm"
+            ]
+        elif index_type == "bm25":
+            return [
+                "simple_tokenizer",
+                "nltk_tokenizer", 
+                "spacy_tokenizer",
+                "custom_tokenizer"
+            ]
+        elif index_type == "hybrid":
+            return [
+                "openai_embed_3_large + bm25",
+                "huggingface_bge_large + bm25"
+            ]
+        else:
+            return []
+
+    def get_model_recommendations(self, index_type: str) -> Dict[str, Any]:
+        """Get model recommendations for the specified index type"""
+        if index_type == "vector":
+            return {
+                "recommended": "openai_embed_3_large",
+                "alternatives": ["huggingface_bge_large", "openai_embed_3_small"],
+                "considerations": [
+                    "openai_embed_3_large: Best overall performance, higher cost",
+                    "huggingface_bge_large: Good performance, lower cost, self-hosted option",
+                    "openai_embed_3_small: Faster inference, lower cost, slightly lower accuracy"
+                ]
+            }
+        elif index_type == "bm25":
+            return {
+                "recommended": "simple_tokenizer",
+                "alternatives": ["nltk_tokenizer", "spacy_tokenizer"],
+                "considerations": [
+                    "simple_tokenizer: Fast, lightweight, good for most use cases",
+                    "nltk_tokenizer: More advanced text processing, language-specific features",
+                    "spacy_tokenizer: Best linguistic analysis, slower but more accurate"
+                ]
+            }
+        else:
+            return {
+                "recommended": None,
+                "alternatives": [],
+                "considerations": ["Unsupported index type"]
+            } 

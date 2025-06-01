@@ -346,4 +346,63 @@ class ChunkerService:
             temp_file.seek(0)
             df = pd.read_parquet(temp_file.name)
         
-        return df 
+        return df
+    
+    def get_chunkers_by_status(self, session: Session, status: str, limit: int = 50) -> List[Chunker]:
+        """Get chunkers filtered by status"""
+        try:
+            from app.models.chunker import ChunkerStatus
+            status_enum = ChunkerStatus(status)
+            chunkers = session.query(Chunker).filter(Chunker.status == status_enum).limit(limit).all()
+            return chunkers
+        except ValueError:
+            # Invalid status, return empty list
+            return []
+
+    def get_chunker_usage_stats(self, session: Session, chunker_id: UUID) -> Dict[str, Any]:
+        """Get usage statistics for a chunker"""
+        from app.models.file_chunk_result import FileChunkResult, ChunkStatus
+        
+        # Count total chunk results for this chunker
+        total_chunks = session.query(FileChunkResult).filter(
+            FileChunkResult.chunker_id == chunker_id
+        ).count()
+        
+        successful_chunks = session.query(FileChunkResult).filter(
+            FileChunkResult.chunker_id == chunker_id,
+            FileChunkResult.status == ChunkStatus.SUCCESS
+        ).count()
+        
+        failed_chunks = session.query(FileChunkResult).filter(
+            FileChunkResult.chunker_id == chunker_id,
+            FileChunkResult.status == ChunkStatus.FAILED
+        ).count()
+        
+        success_rate = (successful_chunks / total_chunks * 100) if total_chunks > 0 else 0
+        
+        # Get most recent usage
+        latest_result = session.query(FileChunkResult).filter(
+            FileChunkResult.chunker_id == chunker_id
+        ).order_by(FileChunkResult.chunked_at.desc()).first()
+        
+        last_used = latest_result.chunked_at.isoformat() if latest_result and latest_result.chunked_at else None
+        
+        # Count unique files processed
+        total_files = session.query(FileChunkResult.file_id).filter(
+            FileChunkResult.chunker_id == chunker_id
+        ).distinct().count()
+        
+        # Calculate average chunk size (this would require parsing the actual chunk data)
+        # For now, we'll just return None or estimate based on chunker configuration
+        chunker = self.get_chunker_by_id(session, chunker_id)
+        average_chunk_size = chunker.chunk_size if chunker and chunker.chunk_size else None
+        
+        return {
+            "total_chunks_created": total_chunks,
+            "successful_chunks": successful_chunks,
+            "failed_chunks": failed_chunks,
+            "success_rate": round(success_rate, 2),
+            "average_chunk_size": average_chunk_size,
+            "last_used": last_used,
+            "total_files_processed": total_files
+        } 

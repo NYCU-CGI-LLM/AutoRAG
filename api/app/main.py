@@ -18,7 +18,10 @@ from app.routers import (
     chat,
     evaluation,
     utilities,
-    dev
+    dev,
+    parser,
+    chunker,
+    indexer
 )
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
@@ -65,6 +68,9 @@ app.include_router(retriever.router)
 app.include_router(chat.router)
 app.include_router(evaluation.router)
 app.include_router(utilities.router)
+app.include_router(parser.router)
+app.include_router(chunker.router)
+app.include_router(indexer.router)
 app.include_router(dev.router)
 
 @app.get("/")
