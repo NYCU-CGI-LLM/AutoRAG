@@ -114,12 +114,13 @@ class ChatService:
                 retriever_id=retriever_id
             )
             
-            # Store configuration in metadata since the model doesn't have a config field yet
+            # Store configuration and name in extra_data
             chat_metadata = metadata or {}
             chat_metadata.update({
                 "name": name,
                 "config": chat_config.model_dump()
             })
+            chat.extra_data = chat_metadata
             
             session.add(chat)
             session.commit()
@@ -138,10 +139,15 @@ class ChatService:
     
     def get_chat_config(self, chat: Chat) -> ChatConfig:
         """Extract chat configuration from chat metadata or use defaults"""
-        # For now, since the Chat model doesn't have a config field,
-        # we'll store it in a hypothetical metadata field or use defaults
-        default_config = ChatConfig()
-        return default_config
+        if chat.extra_data and "config" in chat.extra_data:
+            try:
+                config_data = chat.extra_data["config"]
+                return ChatConfig(**config_data)
+            except Exception as e:
+                logger.warning(f"Failed to parse chat config from metadata: {e}")
+        
+        # Return defaults if no config found or parsing failed
+        return ChatConfig()
     
     def get_chat_by_id(self, session: Session, chat_id: UUID) -> Optional[Chat]:
         """Get chat by ID"""
@@ -553,9 +559,19 @@ User: {user_message}
                 # Get chat configuration
                 chat_config = self.get_chat_config(chat)
                 
+                # Get chat name from metadata, fallback to retriever-based name
+                chat_name = "Chat"  # Default fallback
+                if hasattr(chat, 'extra_data') and chat.extra_data:
+                    # Try to get name from metadata
+                    chat_name = chat.extra_data.get("name", chat_name)
+                
+                # If no name in metadata, generate from retriever name
+                if chat_name == "Chat" and retriever:
+                    chat_name = f"Chat with {retriever.name}"
+                
                 summary = {
                     "id": chat.id,
-                    "name": f"Chat with {retriever.name}" if retriever else "Chat",
+                    "name": chat_name,
                     "message_count": len(dialogs),
                     "last_activity": dialogs[-1].id if dialogs else None,  # Proxy
                     "retriever_config_name": retriever.name if retriever else "Unknown",
