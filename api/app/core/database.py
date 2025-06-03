@@ -3,7 +3,7 @@ from sqlmodel import SQLModel, create_engine, Session
 from typing import Generator
 
 # Database URL from environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:admin@localhost:5432/autorag_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:admin@localhost:5433/autorag_db")
 
 # Create engine
 engine = create_engine(DATABASE_URL, echo=True)

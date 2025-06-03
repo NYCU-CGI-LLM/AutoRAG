@@ -61,7 +61,7 @@ async def list_indexers(
         raise HTTPException(status_code=500, detail=f"Failed to list indexers: {str(e)}")
 
 
-@router.get("/{indexer_id}", response_model=IndexerDetailResponse)
+@router.get("/{indexer_id}", response_model=IndexerDetailResponse, include_in_schema=False)
 async def get_indexer(
     indexer_id: UUID,
     session: Session = Depends(get_session)
@@ -97,7 +97,7 @@ async def get_indexer(
         raise HTTPException(status_code=500, detail=f"Failed to get indexer: {str(e)}")
 
 
-@router.get("/{indexer_id}/collections")
+@router.get("/{indexer_id}/collections", include_in_schema=False)
 async def get_indexer_collections(
     indexer_id: UUID,
     session: Session = Depends(get_session)
@@ -139,7 +139,7 @@ async def get_indexer_collections(
         raise HTTPException(status_code=500, detail=f"Failed to get indexer collections: {str(e)}")
 
 
-@router.get("/{indexer_id}/compatible-models")
+@router.get("/{indexer_id}/compatible-models", include_in_schema=False)
 async def get_compatible_models(
     indexer_id: UUID,
     session: Session = Depends(get_session)

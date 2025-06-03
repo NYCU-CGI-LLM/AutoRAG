@@ -63,7 +63,7 @@ async def list_chunkers(
         raise HTTPException(status_code=500, detail=f"Failed to list chunkers: {str(e)}")
 
 
-@router.get("/{chunker_id}", response_model=ChunkerDetailResponse)
+@router.get("/{chunker_id}", response_model=ChunkerDetailResponse, include_in_schema=False)
 async def get_chunker(
     chunker_id: UUID,
     session: Session = Depends(get_session)
@@ -101,7 +101,7 @@ async def get_chunker(
         raise HTTPException(status_code=500, detail=f"Failed to get chunker: {str(e)}")
 
 
-@router.get("/{chunker_id}/chunk-results")
+@router.get("/{chunker_id}/chunk-results", include_in_schema=False)
 async def get_chunker_results(
     chunker_id: UUID,
     session: Session = Depends(get_session),

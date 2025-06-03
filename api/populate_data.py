@@ -58,7 +58,7 @@ def populate_parsers():
                 "result_type": "markdown",
                 "language": "en"
             },
-            "status": ParserStatus.ACTIVE
+            "status": ParserStatus.DRAFT
         },
         {
             "name": "csv_langchain_v1",
@@ -149,7 +149,7 @@ def populate_parsers():
                 "file_type": "all_files",
                 "table_detection": True
             },
-            "status": ParserStatus.ACTIVE
+            "status": ParserStatus.DRAFT
         }
     ]
     
@@ -180,9 +180,7 @@ def populate_chunkers():
             "chunk_method": "Token",
             "chunk_size": 512,
             "chunk_overlap": 24,
-            "params": {
-                "add_file_name": "en"
-            },
+            "params": {},
             "status": ChunkerStatus.ACTIVE
         },
         {
@@ -191,9 +189,7 @@ def populate_chunkers():
             "chunk_method": "Token",
             "chunk_size": 1024,
             "chunk_overlap": 24,
-            "params": {
-                "add_file_name": "en"
-            },
+            "params": {},
             "status": ChunkerStatus.ACTIVE
         },
         {
@@ -202,9 +198,7 @@ def populate_chunkers():
             "chunk_method": "Sentence",
             "chunk_size": 1024,
             "chunk_overlap": 24,
-            "params": {
-                "add_file_name": "en"
-            },
+            "params": {},
             "status": ChunkerStatus.ACTIVE
         },
         {
@@ -214,8 +208,7 @@ def populate_chunkers():
             "chunk_size": None,
             "chunk_overlap": None,
             "params": {
-                "window_size": 3,
-                "add_file_name": "en"
+                "window_size": 3
             },
             "status": ChunkerStatus.ACTIVE
         },
@@ -228,8 +221,7 @@ def populate_chunkers():
             "params": {
                 "embed_model": "openai",
                 "buffer_size": 1,
-                "breakpoint_percentile_threshold": 95,
-                "add_file_name": "en"
+                "breakpoint_percentile_threshold": 95
             },
             "status": ChunkerStatus.ACTIVE
         },
@@ -239,9 +231,7 @@ def populate_chunkers():
             "chunk_method": "SemanticDoubleMerging",
             "chunk_size": None,
             "chunk_overlap": None,
-            "params": {
-                "add_file_name": "en"
-            },
+            "params": {},
             "status": ChunkerStatus.ACTIVE
         },
         {
@@ -250,9 +240,7 @@ def populate_chunkers():
             "chunk_method": "SimpleFile",
             "chunk_size": None,
             "chunk_overlap": None,
-            "params": {
-                "add_file_name": "en"
-            },
+            "params": {},
             "status": ChunkerStatus.ACTIVE
         },
         {
@@ -293,7 +281,7 @@ def populate_chunkers():
             "chunk_size": None,
             "chunk_overlap": None,
             "params": {},
-            "status": ChunkerStatus.ACTIVE
+            "status": ChunkerStatus.DRAFT
         }
     ]
     
@@ -354,7 +342,7 @@ def populate_indexers():
                 "lowercase": True,
                 "remove_stopwords": True
             },
-            "status": IndexerStatus.ACTIVE
+            "status": IndexerStatus.DRAFT
         },
         {
             "name": "sentence_transformer_all_mpnet",
@@ -385,7 +373,7 @@ def populate_indexers():
                     "b": 0.75
                 }
             },
-            "status": IndexerStatus.ACTIVE
+            "status": IndexerStatus.DRAFT
         },
         {
             "name": "cohere_embed_english_v3",

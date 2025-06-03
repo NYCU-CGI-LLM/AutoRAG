@@ -60,7 +60,7 @@ async def list_parsers(
         raise HTTPException(status_code=500, detail=f"Failed to list parsers: {str(e)}")
 
 
-@router.get("/{parser_id}", response_model=ParserDetailResponse)
+@router.get("/{parser_id}", response_model=ParserDetailResponse, include_in_schema=False)
 async def get_parser(
     parser_id: UUID,
     session: Session = Depends(get_session)
@@ -96,7 +96,7 @@ async def get_parser(
         raise HTTPException(status_code=500, detail=f"Failed to get parser: {str(e)}")
 
 
-@router.get("/{parser_id}/compatible-files")
+@router.get("/{parser_id}/compatible-files", include_in_schema=False)
 async def get_compatible_files(
     parser_id: UUID,
     library_id: Optional[UUID] = None,
