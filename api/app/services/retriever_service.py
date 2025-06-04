@@ -405,19 +405,20 @@ class RetrieverService:
                     "parser": {
                         "id": str(parser.id),
                         "name": parser.name,
-                        "module_type": parser.module_type
+                        "type": parser.module_type,
+                        "params": parser.params
                     } if parser else None,
                     "chunker": {
                         "id": str(chunker.id),
                         "name": chunker.name,
-                        "chunk_method": chunker.chunk_method,
-                        "chunk_size": chunker.chunk_size
+                        "type": chunker.module_type,
+                        "params": chunker.params
                     } if chunker else None,
                     "indexer": {
                         "id": str(indexer.id),
                         "name": indexer.name,
-                        "index_type": indexer.index_type,
-                        "model": indexer.model
+                        "type": indexer.index_type,
+                        "params": indexer.params
                     } if indexer else None
                 },
                 
