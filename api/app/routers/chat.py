@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlmodel import Session
 
 from app.core.database import get_session
@@ -143,19 +143,27 @@ async def get_chat(
         )
         
         # Convert messages to proper format
-        now = datetime.utcnow()
-        messages = [
-            Message(
+        # Since Dialog model doesn't have timestamp fields yet, we'll use the message order
+        # and create timestamps spaced by 1 second intervals as a temporary workaround
+        base_time = datetime.utcnow() - timedelta(minutes=len(chat_details["messages"]))
+        
+        messages = []
+        for i, msg in enumerate(chat_details["messages"]):
+            # Create different timestamps for each message based on their order
+            msg_timestamp = base_time + timedelta(minutes=i)
+            
+            messages.append(Message(
                 id=msg["id"],
                 chat_id=chat_id,
                 role=msg["role"],
                 content=msg["content"],
                 metadata={"llm_model": msg["llm_model"]},
-                created_at=now,
-                updated_at=now
-            )
-            for msg in chat_details["messages"]
-        ]
+                created_at=msg_timestamp,
+                updated_at=msg_timestamp
+            ))
+        
+        # Use the last message timestamp as the last activity time
+        last_activity = messages[-1].created_at if messages else datetime.utcnow()
         
         chat_detail = ChatDetail(
             id=chat_details["id"],
@@ -163,9 +171,9 @@ async def get_chat(
             retriever_id=chat_details["retriever_id"],
             metadata={},
             message_count=chat_details["message_count"],
-            last_activity=now,
-            created_at=now,
-            updated_at=now,
+            last_activity=last_activity,
+            created_at=messages[0].created_at if messages else datetime.utcnow(),
+            updated_at=last_activity,
             config=ChatConfig(**chat_details["config"]),
             messages=messages,
             retriever_config_name=chat_details["retriever_name"]
