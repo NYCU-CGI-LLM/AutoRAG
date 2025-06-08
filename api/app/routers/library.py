@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status, UploadFile, File, Depends
 from typing import List
 from uuid import UUID
 from sqlmodel import Session
+from fastapi.responses import StreamingResponse
 
 from app.schemas.library import (
     Library,
@@ -296,6 +297,58 @@ async def download_file(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {str(e)}")
+
+
+@router.get("/{library_id}/file/{file_id}/preview")
+async def preview_file(
+    library_id: UUID, 
+    file_id: UUID,
+    session: Session = Depends(get_session)
+):
+    """
+    Preview a file from the library.
+    
+    Tries to render the file inline in the browser instead of downloading.
+    This works for file types like PDF, images, and text files.
+    
+    **Path Parameters:**
+    - library_id: UUID of the library
+    - file_id: UUID of the file
+    
+    **Returns:**
+    - A streaming response with the file content.
+    
+    **Errors:**
+    - 404: Library or file not found
+    - 500: Internal server error
+    """
+    try:
+        # Validate library exists
+        if not library_service.library_exists(library_id, session):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Library with ID {library_id} not found"
+            )
+        
+        # Get file from database
+        db_file = library_service.get_file_by_id(file_id, session)
+        if not db_file or db_file.library_id != library_id:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Get file stream from MinIO
+        file_stream = minio_service.get_file_stream(db_file.object_key)
+        
+        # Set headers for inline preview
+        headers = {
+            'Content-Disposition': f'inline; filename="{db_file.file_name}"'
+        }
+        
+        return StreamingResponse(file_stream, media_type=db_file.mime_type, headers=headers)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate preview: {str(e)}")
 
 
 # Hidden endpoints for future implementation

@@ -96,6 +96,28 @@ class MinIOService:
             logger.error(f"Unexpected error uploading file: {e}")
             raise HTTPException(status_code=500, detail="Failed to upload file")
     
+    def get_file_stream(self, object_name: str, bucket_name: Optional[str] = None):
+        """
+        Get a raw file stream from MinIO for efficient streaming.
+        
+        Args:
+            object_name: The object name in MinIO.
+            bucket_name: Optional bucket name, uses default if not provided.
+            
+        Returns:
+            A raw response object that can be streamed.
+            The caller is responsible for closing the stream.
+        """
+        bucket = bucket_name or self.bucket_name
+        try:
+            response = self.client.get_object(bucket, object_name)
+            return response
+        except S3Error as e:
+            logger.error(f"MinIO error getting file stream from bucket '{bucket}': {e}")
+            if e.code == 'NoSuchKey':
+                raise HTTPException(status_code=404, detail="File not found in storage")
+            raise HTTPException(status_code=500, detail="Failed to retrieve file stream")
+    
     def download_file(self, object_name: str, bucket_name: Optional[str] = None) -> BinaryIO:
         """
         Download a file from MinIO
