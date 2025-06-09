@@ -112,7 +112,7 @@ async def list_chats(session: Session = Depends(get_session)):
                 id=summary["id"],
                 name=summary["name"],
                 message_count=summary["message_count"],
-                last_activity=datetime.utcnow(),  # Use current time as proxy
+                last_activity=summary["last_activity"],  # Use actual last activity time
                 retriever_config_name=summary["retriever_config_name"],
                 config=ChatConfig(**summary["config"])
             )
@@ -143,27 +143,21 @@ async def get_chat(
         )
         
         # Convert messages to proper format
-        # Since Dialog model doesn't have timestamp fields yet, we'll use the message order
-        # and create timestamps spaced by 1 second intervals as a temporary workaround
-        base_time = datetime.utcnow() - timedelta(minutes=len(chat_details["messages"]))
-        
+        # Use actual timestamps from the database now that Dialog model has timestamp fields
         messages = []
-        for i, msg in enumerate(chat_details["messages"]):
-            # Create different timestamps for each message based on their order
-            msg_timestamp = base_time + timedelta(minutes=i)
-            
+        for msg in chat_details["messages"]:
             messages.append(Message(
                 id=msg["id"],
                 chat_id=chat_id,
                 role=msg["role"],
                 content=msg["content"],
                 metadata={"llm_model": msg["llm_model"]},
-                created_at=msg_timestamp,
-                updated_at=msg_timestamp
+                created_at=msg["created_at"],
+                updated_at=msg["updated_at"]
             ))
         
-        # Use the last message timestamp as the last activity time
-        last_activity = messages[-1].created_at if messages else datetime.utcnow()
+        # Use the actual last activity time from the service
+        last_activity = chat_details["last_activity"] or datetime.utcnow()
         
         chat_detail = ChatDetail(
             id=chat_details["id"],

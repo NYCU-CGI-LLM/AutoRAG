@@ -519,7 +519,7 @@ User: {user_message}
                 "retriever_id": chat.retriever_id,
                 "retriever_name": retriever.name if retriever else "Unknown",
                 "message_count": len(dialogs),
-                "last_activity": dialogs[-1].id if dialogs else None,  # Use last dialog ID as proxy
+                "last_activity": dialogs[-1].created_at if dialogs else None,
                 "config": chat_config.model_dump(),
                 "messages": [
                     {
@@ -527,7 +527,8 @@ User: {user_message}
                         "role": "user" if dialog.speaker == SpeakerEnum.ME else "assistant",
                         "content": dialog.content,
                         "llm_model": dialog.llm_model,
-                        "created_at": dialog.id  # Proxy for timestamp since Dialog model might not have it
+                        "created_at": dialog.created_at,
+                        "updated_at": dialog.updated_at
                     }
                     for dialog in dialogs
                 ]
@@ -573,7 +574,7 @@ User: {user_message}
                     "id": chat.id,
                     "name": chat_name,
                     "message_count": len(dialogs),
-                    "last_activity": dialogs[-1].id if dialogs else None,  # Proxy
+                    "last_activity": dialogs[-1].created_at if dialogs else datetime.utcnow(),  # Use current time as fallback
                     "retriever_config_name": retriever.name if retriever else "Unknown",
                     "config": chat_config.model_dump()
                 }
