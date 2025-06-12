@@ -142,7 +142,14 @@ class ChatService:
         if chat.extra_data and "config" in chat.extra_data:
             try:
                 config_data = chat.extra_data["config"]
-                return ChatConfig(**config_data)
+                chat_config = ChatConfig(**config_data)
+                
+                # Validate model name to prevent invalid models like "string"
+                if chat_config.llm_model in ["string", "str", "model", "text"]:
+                    logger.warning(f"Invalid model name '{chat_config.llm_model}' in chat config, using default 'gpt-4o-mini'")
+                    chat_config.llm_model = "gpt-4o-mini"
+                
+                return chat_config
             except Exception as e:
                 logger.warning(f"Failed to parse chat config from metadata: {e}")
         
@@ -163,7 +170,7 @@ class ChatService:
         statement = (
             select(Dialog)
             .where(Dialog.chat_id == chat_id)
-            .order_by(Dialog.id)  # Assuming chronological order by ID
+            .order_by(Dialog.created_at)  # Order by creation timestamp for proper chronological order
         )
         return session.exec(statement).all()
     
@@ -201,6 +208,11 @@ class ChatService:
             final_temperature = temperature if temperature is not None else chat_config.temperature
             final_top_p = top_p if top_p is not None else chat_config.top_p
             final_top_k = top_k if top_k is not None else chat_config.top_k
+            
+            # Validate model name to prevent invalid models like "string"
+            if final_model in ["string", "str", "model", "text"]:
+                logger.warning(f"Invalid model name '{final_model}' detected, using default 'gpt-4o-mini'")
+                final_model = "gpt-4o-mini"
             
             # Save user message
             user_dialog = Dialog(
