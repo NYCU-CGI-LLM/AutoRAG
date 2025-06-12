@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from app.models.indexer import Indexer, IndexerStatus
 from app.models.retriever import Retriever, RetrieverStatus
+from app.models.config import Config
 from app.models.file_chunk_result import FileChunkResult, ChunkStatus
 from app.services.minio_service import MinIOService
 
@@ -117,8 +118,12 @@ class IndexService:
             session.add(retriever)
             session.commit()
             
-            # Get indexer configuration
-            indexer = session.get(Indexer, retriever.indexer_id)
+            # Get indexer configuration through config
+            config = session.get(Config, retriever.config_id)
+            if not config:
+                raise HTTPException(status_code=404, detail="Configuration not found")
+            
+            indexer = session.get(Indexer, config.indexer_id)
             if not indexer:
                 raise HTTPException(status_code=404, detail="Indexer not found")
             
@@ -606,19 +611,19 @@ class IndexService:
         """Get usage statistics for an indexer"""
         from app.models.retriever import Retriever, RetrieverStatus
         
-        # Count retrievers using this indexer
-        total_retrievers = session.query(Retriever).filter(
-            Retriever.indexer_id == indexer_id
+        # Count retrievers using this indexer (through config)
+        total_retrievers = session.query(Retriever).join(Config).filter(
+            Config.indexer_id == indexer_id
         ).count()
         
-        active_collections = session.query(Retriever).filter(
-            Retriever.indexer_id == indexer_id,
+        active_collections = session.query(Retriever).join(Config).filter(
+            Config.indexer_id == indexer_id,
             Retriever.status == RetrieverStatus.ACTIVE
         ).count()
         
         # Get total documents indexed across all collections
-        retrievers = session.query(Retriever).filter(
-            Retriever.indexer_id == indexer_id,
+        retrievers = session.query(Retriever).join(Config).filter(
+            Config.indexer_id == indexer_id,
             Retriever.total_chunks.isnot(None)
         ).all()
         
@@ -626,8 +631,8 @@ class IndexService:
         average_collection_size = total_documents / len(retrievers) if retrievers else 0
         
         # Get most recent usage
-        latest_retriever = session.query(Retriever).filter(
-            Retriever.indexer_id == indexer_id
+        latest_retriever = session.query(Retriever).join(Config).filter(
+            Config.indexer_id == indexer_id
         ).order_by(Retriever.indexed_at.desc()).first()
         
         last_used = latest_retriever.indexed_at.isoformat() if latest_retriever and latest_retriever.indexed_at else None
@@ -645,8 +650,8 @@ class IndexService:
         """Get collections created by this indexer"""
         from app.models.retriever import Retriever
         
-        retrievers = session.query(Retriever).filter(
-            Retriever.indexer_id == indexer_id
+        retrievers = session.query(Retriever).join(Config).filter(
+            Config.indexer_id == indexer_id
         ).all()
         
         collections = []

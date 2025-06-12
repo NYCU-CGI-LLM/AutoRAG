@@ -40,6 +40,7 @@ from app.schemas.dev import (
     ConfigExampleResponse,
     RequestExampleResponse
 )
+from app.models.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -708,14 +709,18 @@ async def list_retrievers_dev(
         
         result = []
         for retriever in retrievers:
+            # Get config to access component IDs
+            config = session.get(Config, retriever.config_id) if retriever.config_id else None
+            
             result.append({
                 "id": str(retriever.id),
                 "name": retriever.name,
                 "status": retriever.status.value,
                 "library_id": str(retriever.library_id),
-                "parser_id": str(retriever.parser_id),
-                "chunker_id": str(retriever.chunker_id),
-                "indexer_id": str(retriever.indexer_id),
+                "config_id": str(retriever.config_id),
+                "parser_id": str(config.parser_id) if config else None,
+                "chunker_id": str(config.chunker_id) if config else None,
+                "indexer_id": str(config.indexer_id) if config else None,
                 "collection_name": retriever.collection_name,
                 "total_chunks": retriever.total_chunks,
                 "indexed_at": retriever.indexed_at.isoformat() if retriever.indexed_at else None,
@@ -740,11 +745,13 @@ async def create_simple_retriever(
         from app.services.parser_service import ParserService
         from app.services.chunker_service import ChunkerService
         from app.services.qdrant_index_service import QdrantIndexService
+        from app.services.config_service import ConfigService
         
         retriever_service = RetrieverService()
         parser_service = ParserService()
         chunker_service = ChunkerService()
         index_service = QdrantIndexService()
+        config_service = ConfigService()
         
         # Get or create default components
         parsers = parser_service.get_active_parsers(session)
@@ -788,14 +795,22 @@ async def create_simple_retriever(
         else:
             indexer = indexers[0]
         
+        # Create or find a config for these components
+        config = config_service.get_or_create_config(
+            session=session,
+            parser_id=parser.id,
+            chunker_id=chunker.id,
+            indexer_id=indexer.id,
+            name=f"auto_config_{name}",
+            description=f"Auto-created config for {name}"
+        )
+        
         # Create retriever
         retriever = retriever_service.create_retriever(
             session=session,
             name=name,
             library_id=library_id,
-            parser_id=parser.id,
-            chunker_id=chunker.id,
-            indexer_id=indexer.id,
+            config_id=config.id,
             description=f"Auto-created retriever for library {library_id}"
         )
         
