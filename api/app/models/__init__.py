@@ -9,6 +9,7 @@ from .chunker import Chunker, ChunkerStatus
 from .indexer import Indexer, IndexerStatus
 from .file_parse_result import FileParseResult, ParseStatus
 from .file_chunk_result import FileChunkResult, ChunkStatus
+from .config import Config, ConfigStatus
 
 __all__ = [
     "User",
@@ -28,5 +29,7 @@ __all__ = [
     "FileParseResult",
     "ParseStatus",
     "FileChunkResult",
-    "ChunkStatus"
+    "ChunkStatus",
+    "Config",
+    "ConfigStatus"
 ] 

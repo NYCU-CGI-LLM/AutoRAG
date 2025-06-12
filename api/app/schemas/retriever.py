@@ -2,11 +2,11 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
-from .common import OrmBase, IDModel, TimestampModel, TaskStatusEnum
+from app.schemas.common import IDModel, TimestampModel, TaskStatusEnum
 
 
-# Legacy retriever schemas (for backward compatibility)
 class RetrieverConfigBase(BaseModel):
+    """Legacy RetrieverConfigBase - kept for backward compatibility"""
     name: str = Field(..., description="Retriever configuration name", max_length=100)
     description: Optional[str] = Field(None, description="Configuration description", max_length=500)
     library_id: UUID = Field(..., description="Associated library ID")
@@ -14,10 +14,12 @@ class RetrieverConfigBase(BaseModel):
 
 
 class RetrieverConfigCreate(RetrieverConfigBase):
+    """Legacy RetrieverConfigCreate - kept for backward compatibility"""
     pass
 
 
 class RetrieverConfig(RetrieverConfigBase, IDModel, TimestampModel):
+    """Legacy RetrieverConfig - kept for backward compatibility"""
     indexing_status: TaskStatusEnum = Field(default=TaskStatusEnum.PENDING, description="Indexing status")
     indexing_progress: Optional[float] = Field(default=0.0, description="Indexing progress percentage")
     indexing_message: Optional[str] = Field(None, description="Indexing status message")
@@ -28,6 +30,7 @@ class RetrieverConfig(RetrieverConfigBase, IDModel, TimestampModel):
 
 
 class RetrieverConfigDetail(RetrieverConfig):
+    """Legacy RetrieverConfigDetail - kept for backward compatibility"""
     library_name: Optional[str] = Field(None, description="Associated library name")
     performance_metrics: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Performance metrics")
 
@@ -41,22 +44,12 @@ class IndexingStatusUpdate(BaseModel):
 
 # New retriever service schemas
 class RetrieverCreateRequest(BaseModel):
-    """
-    Request schema for creating a new retriever with automatic building
-    
-    The retriever will be created and automatically execute the complete pipeline:
-    1. Parse files from the specified library
-    2. Chunk the parsed content using the specified chunker
-    3. Create a vector index using the specified indexer
-    
-    If you only want to create the configuration without building, use /create-only endpoint.
-    """
+    """Request schema for creating a retriever using config-based approach"""
     name: str = Field(..., description="Retriever name", max_length=100)
     description: Optional[str] = Field(None, description="Retriever description", max_length=500)
     library_id: UUID = Field(..., description="Library ID to process")
-    parser_id: UUID = Field(..., description="Parser configuration ID")
-    chunker_id: UUID = Field(..., description="Chunker configuration ID") 
-    indexer_id: UUID = Field(..., description="Indexer configuration ID")
+    config_id: UUID = Field(..., description="Configuration ID")
+    
     top_k: int = Field(default=10, description="Default number of results to return")
     params: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional parameters")
     collection_name: Optional[str] = Field(None, description="Custom collection name")
@@ -81,10 +74,9 @@ class RetrieverResponse(BaseModel):
     description: Optional[str] = Field(None, description="Retriever description")
     status: str = Field(..., description="Retriever status")
     library_id: UUID = Field(..., description="Associated library ID")
-    parser_id: UUID = Field(..., description="Parser configuration ID")
-    chunker_id: UUID = Field(..., description="Chunker configuration ID")
-    indexer_id: UUID = Field(..., description="Indexer configuration ID")
-    collection_name: Optional[str] = Field(None, description="Qdrant collection name")
+    config_id: UUID = Field(..., description="Configuration ID")
+    
+    collection_name: Optional[str] = Field(None, description="Vector database collection name")
     top_k: int = Field(..., description="Default top-k value")
     total_chunks: Optional[int] = Field(None, description="Number of indexed chunks")
     indexed_at: Optional[datetime] = Field(None, description="Index creation timestamp")
@@ -152,6 +144,11 @@ class ComponentInfo(BaseModel):
 class RetrieverDetailResponse(RetrieverResponse):
     """Detailed response schema for retriever with component information"""
     library_name: Optional[str] = Field(None, description="Library name")
+    
+    # 新增：config 信息
+    config_info: Optional[Dict[str, Any]] = Field(None, description="Configuration details")
+    
+    # 保持原有組件信息
     parser_info: Optional[ComponentInfo] = Field(None, description="Parser details")
     chunker_info: Optional[ComponentInfo] = Field(None, description="Chunker details")
     indexer_info: Optional[ComponentInfo] = Field(None, description="Indexer details")

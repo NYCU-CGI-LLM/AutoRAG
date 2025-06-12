@@ -1,4 +1,4 @@
-from . import dev, library, retriever, chat, evaluation, utilities, parser, chunker, indexer
+from . import dev, library, retriever, chat, evaluation, utilities, parser, chunker, indexer, config
 
 __all__ = [
     "library",
@@ -9,5 +9,6 @@ __all__ = [
     "parser",
     "chunker",
     "indexer",
+    "config",
     "dev"
 ] 

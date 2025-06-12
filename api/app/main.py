@@ -14,14 +14,15 @@ from app.models.file import File
 from app.routers import (
     # auth,
     library,
-    retriever,
     chat,
     evaluation,
-    utilities,
-    dev,
+    retriever,
     parser,
     chunker,
-    indexer
+    indexer,
+    config,
+    dev,
+    utilities
 )
 
 logging.basicConfig(level=logging.INFO) # Ensure logging is configured
@@ -64,13 +65,14 @@ async def startup_event():
 # Include routers
 # app.include_router(auth.router)
 app.include_router(library.router)
-app.include_router(retriever.router)
 app.include_router(chat.router)
 app.include_router(evaluation.router)
-app.include_router(utilities.router)
+app.include_router(retriever.router)
+app.include_router(config.router)
 app.include_router(parser.router)
 app.include_router(chunker.router)
 app.include_router(indexer.router)
+app.include_router(utilities.router)
 app.include_router(dev.router)
 
 @app.get("/")

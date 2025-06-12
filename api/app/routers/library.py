@@ -117,7 +117,7 @@ async def get_library(
 @router.post("/{library_id}/file", response_model=FileUploadResponse)
 async def upload_file(
     library_id: UUID, 
-    file: UploadFile = File(...),
+    file: UploadFile,
     session: Session = Depends(get_session)
 ):
     """
@@ -352,7 +352,7 @@ async def preview_file(
 
 
 # Hidden endpoints for future implementation
-@router.put("/{library_id}", response_model=Library, include_in_schema=False)
+@router.put("/{library_id}", response_model=Library)
 async def update_library(
     library_id: UUID, 
     library_update: LibraryUpdateRequest,
@@ -378,7 +378,7 @@ async def update_library(
         raise HTTPException(status_code=500, detail=f"Failed to update library: {str(e)}")
 
 
-@router.delete("/{library_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+@router.delete("/{library_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_library(
     library_id: UUID,
     session: Session = Depends(get_session)
@@ -400,7 +400,7 @@ async def delete_library(
         raise HTTPException(status_code=500, detail=f"Failed to delete library: {str(e)}")
 
 
-@router.delete("/{library_id}/file/{file_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+@router.delete("/{library_id}/file/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(
     library_id: UUID, 
     file_id: UUID,

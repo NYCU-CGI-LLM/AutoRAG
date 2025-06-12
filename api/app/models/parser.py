@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from .file_parse_result import FileParseResult
-    from .retriever import Retriever
+    from .config import Config
 
 
 class ParserStatus(str, Enum):
@@ -39,4 +39,4 @@ class Parser(SQLModel, table=True):
     
     # Relationships
     parse_results: List["FileParseResult"] = Relationship(back_populates="parser")
-    retrievers: List["Retriever"] = Relationship(back_populates="parser") 
+    configs: List["Config"] = Relationship(back_populates="parser") 

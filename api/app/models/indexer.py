@@ -6,7 +6,7 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
-    from .retriever import Retriever
+    from .config import Config
 
 
 class IndexerStatus(str, Enum):
@@ -32,4 +32,4 @@ class Indexer(SQLModel, table=True):
     status: IndexerStatus = Field(default=IndexerStatus.ACTIVE)
     
     # Relationships
-    retrievers: List["Retriever"] = Relationship(back_populates="indexer") 
+    configs: List["Config"] = Relationship(back_populates="indexer") 

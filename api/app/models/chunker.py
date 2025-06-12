@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from .file_chunk_result import FileChunkResult
-    from .retriever import Retriever
+    from .config import Config
 
 
 class ChunkerStatus(str, Enum):
@@ -36,4 +36,4 @@ class Chunker(SQLModel, table=True):
     
     # Relationships
     chunk_results: List["FileChunkResult"] = Relationship(back_populates="chunker")
-    retrievers: List["Retriever"] = Relationship(back_populates="chunker") 
+    configs: List["Config"] = Relationship(back_populates="chunker") 
