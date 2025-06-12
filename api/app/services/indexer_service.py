@@ -13,7 +13,7 @@ from app.models.indexer import Indexer, IndexerStatus
 from app.models.file_chunk_result import FileChunkResult, ChunkStatus
 from app.services.minio_service import MinIOService
 
-from autorag.vectordb import vectordb_modules
+from autorag.vectordb import get_support_vectordb
 from autorag.embedding.base import EmbeddingModel
 
 logger = logging.getLogger(__name__)
@@ -176,7 +176,7 @@ class IndexerService:
         vectordb_params = indexer.params.get("vectordb_params", {})
         
         # Initialize vector database
-        vectordb_class = vectordb_modules.get(vectordb_type)
+        vectordb_class = get_support_vectordb(vectordb_type)
         if not vectordb_class:
             raise ValueError(f"Unsupported vectordb_type: {vectordb_type}")
         

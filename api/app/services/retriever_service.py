@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.models.retriever import Retriever, RetrieverStatus
 from app.models.library import Library
+from app.models.config import Config, ConfigStatus
 from app.models.parser import Parser, ParserStatus
 from app.models.chunker import Chunker, ChunkerStatus
 from app.models.indexer import Indexer, IndexerStatus
@@ -51,47 +52,35 @@ class RetrieverService:
         session: Session,
         name: str,
         library_id: UUID,
-        parser_id: UUID,
-        chunker_id: UUID,
-        indexer_id: UUID,
+        config_id: UUID,
         description: Optional[str] = None,
         top_k: int = 10,
         params: Optional[Dict[str, Any]] = None,
         collection_name: Optional[str] = None
     ) -> Retriever:
         """
-        Create a new retriever configuration
+        Create a new retriever configuration using a config
         """
         try:
-            # Validate all dependencies exist
+            # Validate dependencies exist
             library = session.get(Library, library_id)
             if not library:
                 raise HTTPException(status_code=404, detail="Library not found")
             
-            parser = session.get(Parser, parser_id)
-            if not parser or parser.status != ParserStatus.ACTIVE:
-                raise HTTPException(status_code=404, detail="Parser not found or inactive")
-            
-            chunker = session.get(Chunker, chunker_id)
-            if not chunker or chunker.status != ChunkerStatus.ACTIVE:
-                raise HTTPException(status_code=404, detail="Chunker not found or inactive")
-            
-            indexer = session.get(Indexer, indexer_id)
-            if not indexer or indexer.status != IndexerStatus.ACTIVE:
-                raise HTTPException(status_code=404, detail="Indexer not found or inactive")
+            config = session.get(Config, config_id)
+            if not config or config.status != ConfigStatus.ACTIVE:
+                raise HTTPException(status_code=404, detail="Configuration not found or inactive")
             
             # Check if this exact combination already exists
             statement = select(Retriever).where(
                 Retriever.library_id == library_id,
-                Retriever.parser_id == parser_id,
-                Retriever.chunker_id == chunker_id,
-                Retriever.indexer_id == indexer_id
+                Retriever.config_id == config_id
             )
             existing_combination = session.exec(statement).first()
             if existing_combination:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Retriever with this exact configuration already exists: {existing_combination.name}"
+                    detail=f"Retriever with this library-config combination already exists: {existing_combination.name}"
                 )
             
             # Generate collection name if not provided
@@ -105,9 +94,7 @@ class RetrieverService:
                 name=name,
                 description=description,
                 library_id=library_id,
-                parser_id=parser_id,
-                chunker_id=chunker_id,
-                indexer_id=indexer_id,
+                config_id=config_id,
                 top_k=top_k,
                 params=params or {},
                 storage_path=storage_path,
@@ -119,7 +106,7 @@ class RetrieverService:
             session.commit()
             session.refresh(retriever)
             
-            logger.info(f"Created retriever: {name} (ID: {retriever.id})")
+            logger.info(f"Created retriever: {name} (ID: {retriever.id}) with config {config_id}")
             return retriever
             
         except HTTPException:
@@ -231,9 +218,9 @@ class RetrieverService:
         session: Session,
         retriever: Retriever
     ) -> List[FileParseResult]:
-        """Parse all files in the library using the specified parser"""
+        """Parse all files in the retriever's library using the configured parser"""
         
-        # Get all active files in the library
+        # Get files from the library
         files_statement = select(File).where(
             File.library_id == retriever.library_id,
             File.status == FileStatus.ACTIVE
@@ -243,14 +230,19 @@ class RetrieverService:
         if not files:
             raise Exception(f"No active files found in library {retriever.library_id}")
         
+        # Get the parser ID from config
+        config = session.get(Config, retriever.config_id)
+        if not config:
+            raise Exception(f"Configuration {retriever.config_id} not found")
+        
         file_ids = [file.id for file in files]
-        logger.info(f"Parsing {len(file_ids)} files with parser {retriever.parser_id}")
+        logger.info(f"Parsing {len(file_ids)} files with parser {config.parser_id}")
         
         # Parse files using parser service
         parse_results = self.parser_service.parse_files(
             session=session,
             file_ids=file_ids,
-            parser_id=retriever.parser_id
+            parser_id=config.parser_id
         )
         
         return parse_results
@@ -261,7 +253,7 @@ class RetrieverService:
         retriever: Retriever,
         parse_results: List[FileParseResult]
     ) -> List[FileChunkResult]:
-        """Chunk all successful parse results using the specified chunker"""
+        """Chunk all successful parse results using the configured chunker"""
         
         # Filter successful parse results
         successful_parse_results = [
@@ -272,14 +264,19 @@ class RetrieverService:
         if not successful_parse_results:
             raise Exception("No successful parse results available for chunking")
         
+        # Get the chunker ID from config
+        config = session.get(Config, retriever.config_id)
+        if not config:
+            raise Exception(f"Configuration {retriever.config_id} not found")
+        
         parse_result_ids = [pr.id for pr in successful_parse_results]
-        logger.info(f"Chunking {len(parse_result_ids)} parse results with chunker {retriever.chunker_id}")
+        logger.info(f"Chunking {len(parse_result_ids)} parse results with chunker {config.chunker_id}")
         
         # Chunk parse results using chunker service
         chunk_results = self.chunker_service.chunk_parsed_results(
             session=session,
             parse_result_ids=parse_result_ids,
-            chunker_id=retriever.chunker_id
+            chunker_id=config.chunker_id
         )
         
         return chunk_results
@@ -315,8 +312,12 @@ class RetrieverService:
             # Use retriever's top_k if not specified
             top_k = top_k or retriever.top_k
             
-            # Get indexer configuration
-            indexer = session.get(Indexer, retriever.indexer_id)
+            # Get indexer configuration from config
+            config = session.get(Config, retriever.config_id)
+            if not config:
+                raise HTTPException(status_code=404, detail="Configuration not found")
+            
+            indexer = session.get(Indexer, config.indexer_id)  
             if not indexer:
                 raise HTTPException(status_code=404, detail="Indexer configuration not found")
             
@@ -359,9 +360,16 @@ class RetrieverService:
             
             # Get related entities
             library = session.get(Library, retriever.library_id)
-            parser = session.get(Parser, retriever.parser_id)
-            chunker = session.get(Chunker, retriever.chunker_id)
-            indexer = session.get(Indexer, retriever.indexer_id)
+            config = session.get(Config, retriever.config_id)
+            
+            parser = None
+            chunker = None
+            indexer = None
+            
+            if config:
+                parser = session.get(Parser, config.parser_id)
+                chunker = session.get(Chunker, config.chunker_id)
+                indexer = session.get(Indexer, config.indexer_id)
             
             # Count files in library
             files_count = session.exec(
@@ -371,21 +379,30 @@ class RetrieverService:
                 )
             ).all()
             
-            # Count parse results
-            parse_results = session.exec(
-                select(FileParseResult).where(
-                    FileParseResult.parser_id == retriever.parser_id,
-                    FileParseResult.file_id.in_([f.id for f in files_count])
-                )
-            ).all()
+            # Count parse results - need to look by parser_id AND file_id
+            parse_results = []
+            chunk_results = []
             
-            # Count chunk results
-            chunk_results = session.exec(
-                select(FileChunkResult).where(
-                    FileChunkResult.chunker_id == retriever.chunker_id,
-                    FileChunkResult.file_parse_result_id.in_([pr.id for pr in parse_results])
-                )
-            ).all()
+            if config and files_count:
+                file_ids = [f.id for f in files_count]
+                
+                # Get parse results for these files using the parser from config
+                parse_results = session.exec(
+                    select(FileParseResult).where(
+                        FileParseResult.parser_id == config.parser_id,
+                        FileParseResult.file_id.in_(file_ids)
+                    )
+                ).all()
+                
+                # Get chunk results for these parse results using the chunker from config
+                if parse_results:
+                    parse_result_ids = [pr.id for pr in parse_results]
+                    chunk_results = session.exec(
+                        select(FileChunkResult).where(
+                            FileChunkResult.chunker_id == config.chunker_id,
+                            FileChunkResult.file_parse_result_id.in_(parse_result_ids)
+                        )
+                    ).all()
             
             stats = {
                 "retriever_id": str(retriever.id),

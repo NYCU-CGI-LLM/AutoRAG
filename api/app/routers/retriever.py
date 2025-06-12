@@ -21,7 +21,7 @@ from app.models.retriever import RetrieverStatus
 
 router = APIRouter(
     prefix="/retriever",
-    tags=["retriever"],
+    tags=["Retriever"],
 )
 
 # Initialize service
@@ -33,12 +33,12 @@ async def create_retriever(
     session: Session = Depends(get_session)
 ):
     """
-    Create a new retriever configuration and automatically build it
+    Create and build a new retriever
     
-    This endpoint creates a retriever configuration and automatically executes:
-    1. Parse files from the specified library
-    2. Chunk the parsed content using the specified chunker  
-    3. Create a vector index using the specified indexer
+    This endpoint creates a retriever and automatically executes the complete pipeline:
+    1. Parse files from the specified library using the configured parser
+    2. Chunk the parsed content using the configured chunker
+    3. Create a vector index using the configured indexer
     
     The complete pipeline runs automatically after creation.
     """
@@ -48,9 +48,7 @@ async def create_retriever(
             session=session,
             name=request.name,
             library_id=request.library_id,
-            parser_id=request.parser_id,
-            chunker_id=request.chunker_id,
-            indexer_id=request.indexer_id,
+            config_id=request.config_id,
             description=request.description,
             top_k=request.top_k,
             params=request.params,
@@ -98,9 +96,7 @@ async def create_retriever_only(
             session=session,
             name=request.name,
             library_id=request.library_id,
-            parser_id=request.parser_id,
-            chunker_id=request.chunker_id,
-            indexer_id=request.indexer_id,
+            config_id=request.config_id,
             description=request.description,
             top_k=request.top_k,
             params=request.params,
@@ -113,9 +109,7 @@ async def create_retriever_only(
             description=retriever.description,
             status=retriever.status.value,
             library_id=retriever.library_id,
-            parser_id=retriever.parser_id,
-            chunker_id=retriever.chunker_id,
-            indexer_id=retriever.indexer_id,
+            config_id=retriever.config_id,
             collection_name=retriever.collection_name,
             top_k=retriever.top_k,
             total_chunks=retriever.total_chunks,
@@ -152,9 +146,7 @@ async def list_retrievers(
                 description=retriever.description,
                 status=retriever.status.value,
                 library_id=retriever.library_id,
-                parser_id=retriever.parser_id,
-                chunker_id=retriever.chunker_id,
-                indexer_id=retriever.indexer_id,
+                config_id=retriever.config_id,
                 collection_name=retriever.collection_name,
                 top_k=retriever.top_k,
                 total_chunks=retriever.total_chunks,
@@ -194,15 +186,19 @@ async def get_retriever(
             description=retriever.description,
             status=retriever.status.value,
             library_id=retriever.library_id,
-            parser_id=retriever.parser_id,
-            chunker_id=retriever.chunker_id,
-            indexer_id=retriever.indexer_id,
+            config_id=retriever.config_id,
             collection_name=retriever.collection_name,
             top_k=retriever.top_k,
             total_chunks=retriever.total_chunks,
             indexed_at=retriever.indexed_at,
             error_message=retriever.error_message,
             library_name=stats["configuration"]["library"]["name"] if stats["configuration"]["library"] else None,
+            config_info={
+                "id": str(retriever.config_id),
+                "parser": stats["configuration"]["parser"],
+                "chunker": stats["configuration"]["chunker"],
+                "indexer": stats["configuration"]["indexer"]
+            },
             parser_info=stats["configuration"]["parser"],
             chunker_info=stats["configuration"]["chunker"],
             indexer_info=stats["configuration"]["indexer"],
@@ -328,9 +324,7 @@ async def update_retriever_status(
             description=retriever.description,
             status=retriever.status.value,
             library_id=retriever.library_id,
-            parser_id=retriever.parser_id,
-            chunker_id=retriever.chunker_id,
-            indexer_id=retriever.indexer_id,
+            config_id=retriever.config_id,
             collection_name=retriever.collection_name,
             top_k=retriever.top_k,
             total_chunks=retriever.total_chunks,
