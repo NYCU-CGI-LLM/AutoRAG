@@ -131,25 +131,39 @@ class BenchmarkService:
             tuple: (qa_data, corpus_data) DataFrames
         """
         try:
+            logger.info(f"Starting download of benchmark dataset '{benchmark_dataset.name}'")
+            
             # Download QA data
-            qa_data_bytes = self.minio_service.download_file(
+            logger.debug(f"Downloading QA data from: {benchmark_dataset.qa_data_object_key}")
+            qa_response = self.minio_service.download_file(
                 benchmark_dataset.qa_data_object_key,
                 bucket_name=self.benchmark_bucket
             )
+            qa_data_bytes = qa_response.read()
+            qa_response.close()
+            logger.debug(f"Downloaded QA data: {len(qa_data_bytes)} bytes")
             qa_data = pd.read_parquet(BytesIO(qa_data_bytes))
+            logger.debug(f"Parsed QA data: {len(qa_data)} records")
             
             # Download corpus data
-            corpus_data_bytes = self.minio_service.download_file(
+            logger.debug(f"Downloading corpus data from: {benchmark_dataset.corpus_data_object_key}")
+            corpus_response = self.minio_service.download_file(
                 benchmark_dataset.corpus_data_object_key,
                 bucket_name=self.benchmark_bucket
             )
+            corpus_data_bytes = corpus_response.read()
+            corpus_response.close()
+            logger.debug(f"Downloaded corpus data: {len(corpus_data_bytes)} bytes")
             corpus_data = pd.read_parquet(BytesIO(corpus_data_bytes))
+            logger.debug(f"Parsed corpus data: {len(corpus_data)} records")
             
-            logger.info(f"Downloaded benchmark dataset '{benchmark_dataset.name}'")
+            logger.info(f"Successfully downloaded benchmark dataset '{benchmark_dataset.name}' - QA: {len(qa_data)} records, Corpus: {len(corpus_data)} records")
             return qa_data, corpus_data
             
         except Exception as e:
             logger.error(f"Error downloading benchmark dataset '{benchmark_dataset.name}': {e}")
+            logger.error(f"QA object key: {benchmark_dataset.qa_data_object_key}")
+            logger.error(f"Corpus object key: {benchmark_dataset.corpus_data_object_key}")
             raise
     
     async def create_sample_benchmarks(self) -> List[BenchmarkDataset]:

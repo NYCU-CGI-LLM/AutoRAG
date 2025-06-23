@@ -7,13 +7,107 @@ from .common import OrmBase, IDModel, TimestampModel, TaskStatusEnum
 
 class EvaluationBase(BaseModel):
     name: Optional[str] = Field(None, description="Evaluation run name")
-    retriever_config_id: UUID = Field(..., description="Associated retriever configuration ID")
+    retriever_config_id: Optional[UUID] = Field(None, description="Associated retriever configuration ID (optional)")
     evaluation_config: Dict[str, Any] = Field(..., description="Evaluation configuration parameters")
     dataset_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Dataset configuration")
 
 
-class EvaluationCreate(EvaluationBase):
-    pass
+class EvaluationCreate(BaseModel):
+    name: Optional[str] = Field(None, description="Evaluation run name")
+    benchmark_dataset_id: UUID = Field(..., description="Benchmark dataset ID to use for evaluation")
+    evaluation_config: Dict[str, Any] = Field(..., description="Evaluation configuration parameters")
+
+
+class EvaluationConfigSchema(BaseModel):
+    """
+    Simplified evaluation configuration schema for AutoRAG
+    """
+    # Embedding model selection (restricted to OpenAI models)
+    embedding_model: str = Field(
+        default="openai_embed_3_large",
+        description="Embedding model to use",
+        pattern="^(openai_embed_3_large|openai_embed_3_small)$"
+    )
+    
+
+    
+    # Retrieval strategy configuration
+    retrieval_strategy: Dict[str, Any] = Field(
+        default={
+            "metrics": ["retrieval_f1", "retrieval_recall", "retrieval_precision"],
+            "top_k": 10
+        },
+        description="Retrieval evaluation strategy"
+    )
+    
+    # Generation strategy configuration
+    generation_strategy: Optional[Dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "metrics": [
+                {"metric_name": "bleu"},
+                {"metric_name": "rouge"},
+                {"metric_name": "meteor"}
+            ]
+        },
+        description="Generation evaluation strategy"
+    )
+    
+    # Generator configuration (OpenAI LLM only)
+    generator_config: Optional[Dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "model": "gpt-4o-mini",
+            "temperature": 0.7,
+            "max_tokens": 512,
+            "batch": 16
+        },
+        description="OpenAI LLM configuration"
+    )
+    
+    # Prompt template
+    prompt_template: Optional[str] = Field(
+        default="Read the passages and answer the given question.\n\n"
+                "Question: {query}\n\n"
+                "Passages: {retrieved_contents}\n\n"
+                "Answer: ",
+        description="Prompt template for generation"
+    )
+
+
+class EvaluationConfigExample(BaseModel):
+    """Example evaluation configuration"""
+    example_basic: EvaluationConfigSchema = Field(
+        default_factory=lambda: EvaluationConfigSchema(),
+        description="Basic evaluation configuration"
+    )
+    
+    example_advanced: EvaluationConfigSchema = Field(
+        default_factory=lambda: EvaluationConfigSchema(
+            embedding_model="openai_embed_3_small",
+            retrieval_strategy={
+                "metrics": ["retrieval_f1", "retrieval_recall", "retrieval_precision", "retrieval_ndcg"],
+                "top_k": 15
+            },
+            generation_strategy={
+                "metrics": [
+                    {"metric_name": "bleu"},
+                    {"metric_name": "rouge"},
+                    {"metric_name": "meteor"},
+                    {"metric_name": "sem_score", "embedding_model": "openai"}
+                ]
+            },
+            generator_config={
+                "model": "gpt-4o",
+                "temperature": 0.3,
+                "max_tokens": 1024,
+                "batch": 8
+            },
+            prompt_template="You are a helpful assistant. Answer the following question based on the provided context.\n\n"
+                           "Question: {query}\n\n"
+                           "Context:\n{retrieved_contents}\n\n"
+                           "Please provide a comprehensive and accurate answer:"
+        ),
+        description="Advanced evaluation configuration"
+    )
 
 
 class Evaluation(EvaluationBase, IDModel, TimestampModel):

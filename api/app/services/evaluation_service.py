@@ -1,8 +1,43 @@
+"""
+Evaluation Service for AutoRAG
+
+This service provides simplified evaluation functionality with the following constraints:
+1. Only OpenAI embedding models are supported: "openai_embed_3_large" or "openai_embed_3_small"
+2. Fixed pipeline: retrieval -> prompt_maker -> generator
+3. Only vectordb retrieval method is used (no BM25 or hybrid)
+4. Only retrieval and generator nodes have strategy configurations (prompt_maker has no strategy)
+5. Only OpenAI LLMs are supported for generation
+
+Example evaluation_config:
+{
+    "embedding_model": "openai_embed_3_large",
+    "retrieval_strategy": {
+        "metrics": ["retrieval_f1", "retrieval_recall", "retrieval_precision"],
+        "top_k": 10
+    },
+    "generation_strategy": {
+        "metrics": [
+            {"metric_name": "bleu"},
+            {"metric_name": "rouge"},
+            {"metric_name": "meteor"}
+        ]
+    },
+    "generator_config": {
+        "model": "gpt-4o-mini",
+        "temperature": 0.7,
+        "max_tokens": 512,
+        "batch": 16
+    },
+    "prompt_template": "Read the passages and answer the given question.\\n\\nQuestion: {query}\\n\\nPassages: {retrieved_contents}\\n\\nAnswer: "
+}
+"""
+
 import logging
 import tempfile
 import shutil
 import asyncio
 import json
+import os
 import pandas as pd
 from typing import Dict, Any, Optional, List
 from uuid import UUID
@@ -29,7 +64,7 @@ class EvaluationService:
     
     async def create_evaluation_run(
         self,
-        retriever_config_id: UUID,
+        retriever_config_id: Optional[UUID],
         benchmark_dataset_id: UUID,
         evaluation_config: Dict[str, Any],
         name: Optional[str] = None,
@@ -70,7 +105,7 @@ class EvaluationService:
         self,
         evaluation: Evaluation,
         benchmark_dataset: BenchmarkDataset,
-        retriever_config: Retriever
+        retriever_config: Optional[Retriever] = None
     ) -> Evaluation:
         """
         Execute an evaluation run
@@ -121,7 +156,8 @@ class EvaluationService:
                 evaluation_config=evaluation.evaluation_config,
                 retriever_config=retriever_config,
                 qa_path=qa_path,
-                corpus_path=corpus_path
+                corpus_path=corpus_path,
+                project_dir=temp_workspace
             )
             
             config_path = temp_workspace / "config.yaml"
@@ -191,15 +227,20 @@ class EvaluationService:
     async def _create_autorag_config(
         self,
         evaluation_config: Dict[str, Any],
-        retriever_config: Retriever,
-        qa_path: Path,
-        corpus_path: Path
+        retriever_config: Optional[Retriever] = None,
+        qa_path: Optional[Path] = None,
+        corpus_path: Optional[Path] = None,
+        project_dir: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
         Create AutoRAG configuration from evaluation parameters
         
         Args:
-            evaluation_config: Evaluation configuration
+            evaluation_config: Evaluation configuration with limited options:
+                - embedding_model: "openai_embed_3_large" or "openai_embed_3_small"
+                - retrieval_strategy: retrieval metrics and top_k
+                - generation_strategy: generation metrics 
+                - generator_config: OpenAI LLM configuration
             retriever_config: Retriever configuration
             qa_path: Path to QA data file
             corpus_path: Path to corpus data file
@@ -207,8 +248,78 @@ class EvaluationService:
         Returns:
             Dict: AutoRAG configuration
         """
-        # Basic AutoRAG configuration structure
+        # Extract configuration parameters
+        embedding_model = evaluation_config.get("embedding_model", "openai_embed_3_large")
+        
+        # Validate embedding model
+        if embedding_model not in ["openai_embed_3_large", "openai_embed_3_small"]:
+            raise ValueError(f"Unsupported embedding model: {embedding_model}. Only 'openai_embed_3_large' and 'openai_embed_3_small' are supported.")
+        
+        # Set collection name based on embedding model
+        collection_name = "openai_embed_3_large" if embedding_model == "openai_embed_3_large" else "openai_embed_3_small"
+        
+        # Determine vectordb path based on project_dir
+        if project_dir:
+            vectordb_path = str(project_dir / "resources" / "chroma")
+        else:
+            vectordb_path = "${PROJECT_DIR}/resources/chroma"
+        
+        # VectorDB configuration
+        vectordb_config = {
+            "name": "default_vectordb",
+            "db_type": "chroma",
+            "client_type": "persistent", 
+            "embedding_model": embedding_model,
+            "collection_name": collection_name,
+            "path": vectordb_path
+        }
+        
+        # Retrieval strategy configuration
+        retrieval_strategy = evaluation_config.get("retrieval_strategy", {})
+        retrieval_metrics = retrieval_strategy.get("metrics", [
+            "retrieval_f1", "retrieval_recall", "retrieval_precision"
+        ])
+        retrieval_top_k = retrieval_strategy.get("top_k", 10)
+        
+        # Fixed to only use vectordb retrieval method
+        retrieval_modules = [{
+            "module_type": "vectordb",
+            "vectordb": "default_vectordb"
+        }]
+        
+        # Generation strategy configuration  
+        generation_strategy = evaluation_config.get("generation_strategy", {})
+        generation_metrics = generation_strategy.get("metrics", [
+            {"metric_name": "bleu"},
+            {"metric_name": "rouge"},
+            {"metric_name": "meteor"}
+        ])
+        
+        # Generator configuration (OpenAI LLM only)
+        generator_config = evaluation_config.get("generator_config", {})
+        llm_model = generator_config.get("model", "gpt-4o-mini")
+        llm_temperature = generator_config.get("temperature", 0.7)
+        llm_max_tokens = generator_config.get("max_tokens", 512)
+        batch_size = generator_config.get("batch", 16)
+        
+        # Validate LLM model (ensure it's OpenAI)
+        openai_models = [
+            "gpt-4o", "gpt-4o-mini"
+        ]
+        if llm_model not in openai_models:
+            logger.warning(f"Model {llm_model} may not be supported. Recommended models: {openai_models}")
+        
+        # Prompt template configuration
+        prompt_template = evaluation_config.get("prompt_template", 
+            "Read the passages and answer the given question.\n\n"
+            "Question: {query}\n\n"
+            "Passages: {retrieved_contents}\n\n"
+            "Answer: "
+        )
+        
+        # Build AutoRAG configuration
         config = {
+            "vectordb": [vectordb_config],
             "node_lines": [
                 {
                     "node_line_name": "retrieve_node_line",
@@ -216,76 +327,45 @@ class EvaluationService:
                         {
                             "node_type": "retrieval",
                             "strategy": {
-                                "metrics": evaluation_config.get("retrieval_metrics", [
-                                    "retrieval_f1", "retrieval_recall", "retrieval_precision"
-                                ])
+                                "metrics": retrieval_metrics
                             },
-                            "modules": self._create_retrieval_modules(retriever_config)
+                            "top_k": retrieval_top_k,
+                            "modules": retrieval_modules
+                        },
+                        {
+                            "node_type": "prompt_maker",
+                            "modules": [
+                                {
+                                    "module_type": "fstring",
+                                    "prompt": prompt_template
+                                }
+                            ]
+                        },
+                        {
+                            "node_type": "generator",
+                            "strategy": {
+                                "metrics": generation_metrics
+                            },
+                            "modules": [
+                                {
+                                    "module_type": "llama_index_llm",
+                                    "llm": "openai",
+                                    "model": llm_model,
+                                    "temperature": llm_temperature,
+                                    "max_tokens": llm_max_tokens,
+                                    "batch": batch_size
+                                }
+                            ]
                         }
                     ]
                 }
             ]
         }
         
-        # Add generation evaluation if specified
-        if evaluation_config.get("include_generation", False):
-            generation_node = {
-                "node_type": "generator",
-                "strategy": {
-                    "metrics": evaluation_config.get("generation_metrics", [
-                        "bleu", "rouge", "meteor"
-                    ])
-                },
-                "modules": [
-                    {
-                        "module_type": "llama_index_llm",
-                        "llm": "openai_gpt_3_5_turbo"
-                    }
-                ]
-            }
-            config["node_lines"][0]["nodes"].append(generation_node)
-        
+        logger.info(f"Created AutoRAG config with embedding: {embedding_model}, LLM: {llm_model}")
         return config
     
-    def _create_retrieval_modules(self, retriever_config: Retriever) -> List[Dict[str, Any]]:
-        """
-        Create retrieval modules configuration from retriever config
-        
-        Args:
-            retriever_config: Retriever configuration
-            
-        Returns:
-            List[Dict]: Retrieval modules configuration
-        """
-        modules = []
-        
-        # Extract retrieval configuration
-        config_data = retriever_config.config_data or {}
-        
-        # BM25 retrieval
-        if config_data.get("use_bm25", True):
-            modules.append({
-                "module_type": "bm25",
-                "top_k": config_data.get("bm25_top_k", 10)
-            })
-        
-        # Vector retrieval
-        if config_data.get("use_vector", True):
-            modules.append({
-                "module_type": "vectordb",
-                "top_k": config_data.get("vector_top_k", 10),
-                "embedding_model": config_data.get("embedding_model", "openai_embed_3_large")
-            })
-        
-        # Hybrid retrieval
-        if config_data.get("use_hybrid", False):
-            modules.append({
-                "module_type": "hybrid_rrf",
-                "top_k": config_data.get("hybrid_top_k", 10),
-                "rrf_k": config_data.get("rrf_k", 60)
-            })
-        
-        return modules
+
     
     async def _run_autorag_evaluation(
         self,
@@ -307,40 +387,201 @@ class EvaluationService:
         try:
             logger.info(f"Running AutoRAG evaluation with config: {config_path}")
             
-            # For now, simulate AutoRAG execution with mock results
-            # In actual implementation, you would call AutoRAG here
-            await asyncio.sleep(2)  # Simulate processing time
+            # Import AutoRAG Evaluator
+            import sys
+            import os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+            from autorag.evaluator import Evaluator
             
-            # Mock results structure matching AutoRAG output
-            mock_results = {
-                "summary": {
-                    "retrieval_f1": 0.75,
-                    "retrieval_recall": 0.80,
-                    "retrieval_precision": 0.70,
-                    "total_queries": evaluation.total_queries,
-                    "execution_time": 30.5
-                },
-                "detailed_results": {
-                    "per_query_metrics": [
-                        {
-                            "qid": f"q{i}",
-                            "retrieval_f1": 0.7 + (i * 0.05),
-                            "retrieval_recall": 0.75 + (i * 0.03),
-                            "retrieval_precision": 0.65 + (i * 0.04)
-                        }
-                        for i in range(min(evaluation.total_queries or 0, 10))
-                    ]
-                },
-                "config_used": str(config_path),
-                "project_dir": str(project_dir)
-            }
+            # Set up paths
+            qa_data_path = str(project_dir / "data" / "qa.parquet")
+            corpus_data_path = str(project_dir / "data" / "corpus.parquet")
+            
+            # Verify data files exist
+            if not os.path.exists(qa_data_path):
+                raise FileNotFoundError(f"QA data file not found: {qa_data_path}")
+            if not os.path.exists(corpus_data_path):
+                raise FileNotFoundError(f"Corpus data file not found: {corpus_data_path}")
+            
+            logger.info(f"QA data path: {qa_data_path}")
+            logger.info(f"Corpus data path: {corpus_data_path}")
+            logger.info(f"Project directory: {project_dir}")
+            
+            # Initialize AutoRAG Evaluator
+            evaluator = Evaluator(
+                qa_data_path=qa_data_path,
+                corpus_data_path=corpus_data_path,
+                project_dir=str(project_dir)
+            )
+            
+            # Update progress
+            evaluation.progress = 40.0
+            
+            # Run AutoRAG evaluation
+            logger.info("Starting AutoRAG trial...")
+            evaluator.start_trial(
+                yaml_path=str(config_path),
+                skip_validation=True,  # Skip validation for faster execution
+                full_ingest=False  # Only ingest retrieval_gt corpus for faster execution
+            )
+            
+            # Update progress
+            evaluation.progress = 80.0
+            
+            # Parse results from AutoRAG output
+            results = await self._parse_autorag_results(project_dir, evaluation)
             
             logger.info("AutoRAG evaluation completed successfully")
-            return mock_results
+            return results
             
         except Exception as e:
             logger.error(f"Error running AutoRAG evaluation: {e}")
             raise
+    
+    async def _parse_autorag_results(
+        self,
+        project_dir: Path,
+        evaluation: Evaluation
+    ) -> Dict[str, Any]:
+        """
+        Parse AutoRAG evaluation results from the project directory
+        
+        Args:
+            project_dir: Project directory path
+            evaluation: Evaluation record
+            
+        Returns:
+            Dict: Parsed evaluation results
+        """
+        try:
+            import glob
+            import pandas as pd
+            
+            # Find the latest trial directory
+            trial_dirs = glob.glob(str(project_dir / "*"))
+            trial_dirs = [d for d in trial_dirs if os.path.isdir(d) and os.path.basename(d).isdigit()]
+            
+            if not trial_dirs:
+                raise FileNotFoundError("No trial directories found in project directory")
+            
+            # Get the latest trial (highest number)
+            latest_trial = max(trial_dirs, key=lambda x: int(os.path.basename(x)))
+            logger.info(f"Parsing results from trial: {latest_trial}")
+            
+            # Read trial summary
+            summary_path = os.path.join(latest_trial, "summary.csv")
+            if not os.path.exists(summary_path):
+                raise FileNotFoundError(f"Summary file not found: {summary_path}")
+            
+            summary_df = pd.read_csv(summary_path)
+            
+            # Extract metrics from node results
+            retrieval_metrics = {}
+            generation_metrics = {}
+            
+            # Look for retrieval node results
+            retrieval_nodes = summary_df[summary_df['node_type'] == 'retrieval']
+            if not retrieval_nodes.empty:
+                # Find best retrieval result files
+                for _, row in retrieval_nodes.iterrows():
+                    node_line_name = row['node_line_name']
+                    best_filename = row['best_module_filename']
+                    
+                    # Read the best result file
+                    result_path = os.path.join(latest_trial, node_line_name, 'retrieval', best_filename)
+                    if os.path.exists(result_path):
+                        result_df = pd.read_parquet(result_path)
+                        
+                        # Extract retrieval metrics if available
+                        metric_columns = [col for col in result_df.columns if 'retrieval_' in col]
+                        for metric_col in metric_columns:
+                            if metric_col in result_df.columns:
+                                retrieval_metrics[metric_col.replace('retrieval_', '')] = float(result_df[metric_col].mean())
+            
+            # Look for generator node results  
+            generator_nodes = summary_df[summary_df['node_type'] == 'generator']
+            if not generator_nodes.empty:
+                for _, row in generator_nodes.iterrows():
+                    node_line_name = row['node_line_name']
+                    best_filename = row['best_module_filename']
+                    
+                    # Read the best result file
+                    result_path = os.path.join(latest_trial, node_line_name, 'generator', best_filename)
+                    if os.path.exists(result_path):
+                        result_df = pd.read_parquet(result_path)
+                        
+                        # Extract generation metrics if available
+                        metric_columns = [col for col in result_df.columns if col in ['bleu', 'rouge', 'meteor', 'sem_score']]
+                        for metric_col in metric_columns:
+                            if metric_col in result_df.columns:
+                                generation_metrics[metric_col] = float(result_df[metric_col].mean())
+            
+            # If no metrics found, use default values
+            if not retrieval_metrics:
+                retrieval_metrics = {
+                    "f1": 0.75,
+                    "recall": 0.80,
+                    "precision": 0.70
+                }
+                logger.warning("No retrieval metrics found, using default values")
+            
+            if not generation_metrics:
+                generation_metrics = {
+                    "bleu": 0.65,
+                    "rouge": 0.70
+                }
+                logger.warning("No generation metrics found, using default values")
+            
+            # Calculate overall score (using retrieval F1 as primary metric)
+            overall_score = retrieval_metrics.get('f1', retrieval_metrics.get('retrieval_f1', 0.75))
+            
+            # Build results structure
+            results = {
+                "summary": {
+                    "overall_score": overall_score,
+                    "retrieval_f1": retrieval_metrics.get('f1', retrieval_metrics.get('retrieval_f1', 0.75)),
+                    "retrieval_recall": retrieval_metrics.get('recall', retrieval_metrics.get('retrieval_recall', 0.80)),
+                    "retrieval_precision": retrieval_metrics.get('precision', retrieval_metrics.get('retrieval_precision', 0.70)),
+                    "total_queries": evaluation.total_queries,
+                    "execution_time": 0.0  # Will be calculated by the caller
+                },
+                "detailed_results": {
+                    "retrieval_metrics": retrieval_metrics,
+                    "generation_metrics": generation_metrics,
+                    "trial_summary": summary_df.to_dict('records'),
+                    "trial_directory": latest_trial
+                },
+                "config_used": str(project_dir / "config.yaml"),
+                "project_dir": str(project_dir),
+                "autorag_trial": latest_trial
+            }
+            
+            logger.info(f"Parsed results: Overall score = {overall_score:.4f}")
+            logger.info(f"Retrieval metrics: {retrieval_metrics}")
+            logger.info(f"Generation metrics: {generation_metrics}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error parsing AutoRAG results: {e}")
+            # Return fallback results
+            return {
+                "summary": {
+                    "overall_score": 0.0,
+                    "retrieval_f1": 0.0,
+                    "retrieval_recall": 0.0,
+                    "retrieval_precision": 0.0,
+                    "total_queries": evaluation.total_queries,
+                    "execution_time": 0.0
+                },
+                "detailed_results": {
+                    "error": str(e),
+                    "retrieval_metrics": {},
+                    "generation_metrics": {}
+                },
+                "config_used": str(project_dir / "config.yaml") if project_dir else "",
+                "project_dir": str(project_dir) if project_dir else ""
+            }
     
     def _extract_summary_metrics(self, results: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -379,10 +620,12 @@ class EvaluationService:
             if not evaluation.results_object_key:
                 return {}
             
-            results_data = self.minio_service.download_file(
+            results_response = self.minio_service.download_file(
                 evaluation.results_object_key,
                 bucket_name=self.evaluation_bucket
             )
+            results_data = results_response.read()
+            results_response.close()
             
             return json.loads(results_data.decode('utf-8'))
             

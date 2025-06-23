@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from sqlmodel import Session, select
 from datetime import datetime
@@ -10,7 +10,9 @@ from app.schemas.evaluation import (
     EvaluationDetail,
     EvaluationSummary,
     EvaluationStatusUpdate,
-    EvaluationMetrics
+    EvaluationMetrics,
+    EvaluationConfigSchema,
+    EvaluationConfigExample
 )
 from app.models.evaluation import Evaluation as EvaluationModel, BenchmarkDataset
 from app.models.retriever import Retriever
@@ -36,43 +38,22 @@ async def submit_evaluation_run(
     """
     Submit an evaluation run.
     
-    Creates a new evaluation run for the specified retriever configuration.
+    Creates a new evaluation run with the specified benchmark dataset and evaluation config.
     The evaluation will be queued and processed asynchronously.
     """
     try:
-        # Validate retriever configuration exists
-        retriever = session.get(Retriever, evaluation_create.retriever_config_id)
-        if not retriever:
+        # Validate benchmark dataset exists
+        benchmark_dataset = session.get(BenchmarkDataset, evaluation_create.benchmark_dataset_id)
+        if not benchmark_dataset:
             raise HTTPException(
                 status_code=404,
-                detail=f"Retriever configuration {evaluation_create.retriever_config_id} not found"
+                detail=f"Benchmark dataset {evaluation_create.benchmark_dataset_id} not found"
             )
         
-        # Get benchmark dataset if specified
-        benchmark_dataset = None
-        if hasattr(evaluation_create, 'benchmark_dataset_id') and evaluation_create.benchmark_dataset_id:
-            benchmark_dataset = session.get(BenchmarkDataset, evaluation_create.benchmark_dataset_id)
-            if not benchmark_dataset:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Benchmark dataset {evaluation_create.benchmark_dataset_id} not found"
-                )
-        else:
-            # Use default benchmark dataset
-            statement = select(BenchmarkDataset).where(BenchmarkDataset.is_active == True).limit(1)
-            result = session.exec(statement)
-            benchmark_dataset = result.first()
-            
-            if not benchmark_dataset:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No benchmark dataset available. Please upload a benchmark dataset first."
-                )
-        
-        # Create evaluation run
+        # Create evaluation run (no retriever_config_id needed)
         evaluation = await evaluation_service.create_evaluation_run(
-            retriever_config_id=evaluation_create.retriever_config_id,
-            benchmark_dataset_id=benchmark_dataset.id,
+            retriever_config_id=None,  # Not needed anymore
+            benchmark_dataset_id=evaluation_create.benchmark_dataset_id,
             evaluation_config=evaluation_create.evaluation_config,
             name=evaluation_create.name
         )
@@ -87,7 +68,7 @@ async def submit_evaluation_run(
             run_evaluation_background,
             evaluation.id,
             benchmark_dataset.id,
-            retriever.id
+            None  # No retriever ID needed
         )
         
         return evaluation
@@ -332,7 +313,312 @@ async def list_benchmark_datasets(session: Session = Depends(get_session)):
         raise HTTPException(status_code=500, detail=f"Failed to list benchmark datasets: {str(e)}")
 
 
-async def run_evaluation_background(evaluation_id: UUID, benchmark_dataset_id: UUID, retriever_id: UUID):
+@router.get("/test/list-datasets", response_model=dict)
+async def test_list_available_datasets(session: Session = Depends(get_session)):
+    """
+    Test endpoint to list available benchmark datasets and retriever configs.
+    
+    Helps identify the IDs needed for testing.
+    """
+    try:
+        # Get benchmark datasets
+        benchmark_statement = select(BenchmarkDataset).where(BenchmarkDataset.is_active == True)
+        benchmark_datasets = session.exec(benchmark_statement).all()
+        
+        # Get retriever configs
+        retriever_statement = select(Retriever)
+        retrievers = session.exec(retriever_statement).all()
+        
+        return {
+            "benchmark_datasets": [
+                {
+                    "id": str(dataset.id),
+                    "name": dataset.name,
+                    "description": dataset.description,
+                    "qa_object_key": dataset.qa_object_key,
+                    "corpus_object_key": dataset.corpus_object_key
+                }
+                for dataset in benchmark_datasets
+            ],
+            "retriever_configs": [
+                {
+                    "id": str(retriever.id),
+                    "name": retriever.name,
+                    "description": retriever.description,
+                    "config_type": retriever.config_type
+                }
+                for retriever in retrievers
+            ],
+            "sample_evaluation_config": {
+                "embedding_model": "openai_embed_3_large",
+                "retrieval_strategy": {
+                    "metrics": ["retrieval_f1", "retrieval_recall"],
+                    "top_k": 10
+                },
+                "generation_strategy": {
+                    "metrics": [
+                        {"metric_name": "bleu"},
+                        {"metric_name": "rouge"}
+                    ]
+                },
+                "generator_config": {
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.7,
+                    "max_tokens": 512,
+                    "batch": 16
+                }
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list test data: {str(e)}"
+        )
+
+
+@router.post("/test/config-only", response_model=dict)
+async def test_config_generation_only(evaluation_config: dict):
+    """
+    Test endpoint to generate AutoRAG config only.
+    
+    This endpoint only tests the config generation process without downloading data.
+    Useful for quickly validating evaluation_config format.
+    """
+    try:
+        # Generate AutoRAG config without data dependencies
+        autorag_config = await evaluation_service._create_autorag_config(
+            evaluation_config=evaluation_config
+        )
+        
+        # Return test results
+        return {
+            "status": "success",
+            "message": "Successfully generated AutoRAG config",
+            "config_info": {
+                "embedding_model": autorag_config.get("vectordb", [{}])[0].get("embedding_model"),
+                "collection_name": autorag_config.get("vectordb", [{}])[0].get("collection_name"),
+                "vectordb_path": autorag_config.get("vectordb", [{}])[0].get("path"),
+                "node_count": len(autorag_config.get("node_lines", [{}])[0].get("nodes", [])),
+                "retrieval_modules": [
+                    module.get("module_type") 
+                    for module in autorag_config.get("node_lines", [{}])[0].get("nodes", [{}])[0].get("modules", [])
+                ],
+                "generation_modules": [
+                    module.get("module_type") 
+                    for module in autorag_config.get("node_lines", [{}])[0].get("nodes", [{}])[-1].get("modules", [])
+                ]
+            },
+            "generated_config": autorag_config,
+            "note": "VectorDB path uses placeholder '${PROJECT_DIR}' since no project_dir was provided"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Config generation failed: {str(e)}"
+        )
+
+
+@router.post("/test/save-files", response_model=dict)
+async def test_save_files_to_disk(
+    benchmark_dataset_id: UUID,
+    evaluation_config: dict,
+    session: Session = Depends(get_session)
+):
+    """
+    Test endpoint to save benchmark data and config to disk for inspection.
+    
+    This endpoint downloads data, generates config, and saves them to a temporary
+    directory that won't be automatically cleaned up, so you can inspect the files.
+    """
+    try:
+        # Validate benchmark dataset exists
+        benchmark_dataset = session.get(BenchmarkDataset, benchmark_dataset_id)
+        if not benchmark_dataset:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Benchmark dataset {benchmark_dataset_id} not found"
+            )
+        
+        # Download benchmark data
+        qa_data, corpus_data = await benchmark_service.download_benchmark_dataset(benchmark_dataset)
+        
+        # Create persistent temp directory first (won't be auto-cleaned)
+        import tempfile
+        from pathlib import Path
+        import yaml
+        
+        temp_dir = Path(tempfile.mkdtemp(prefix="eval_debug_"))
+        data_dir = temp_dir / "data"
+        data_dir.mkdir(exist_ok=True)
+        
+        # Create resources directory for vectordb
+        resources_dir = temp_dir / "resources"
+        resources_dir.mkdir(exist_ok=True)
+        
+        # Generate AutoRAG config with correct project_dir
+        autorag_config = await evaluation_service._create_autorag_config(
+            evaluation_config=evaluation_config,
+            project_dir=temp_dir
+        )
+        
+        # Save data files
+        qa_path = data_dir / "qa.parquet"
+        corpus_path = data_dir / "corpus.parquet"
+        config_path = temp_dir / "config.yaml"
+        
+        qa_data.to_parquet(qa_path, index=False)
+        corpus_data.to_parquet(corpus_path, index=False)
+        
+        # Save config file
+        with open(config_path, 'w') as f:
+            yaml.dump(autorag_config, f, default_flow_style=False)
+        
+        # Create a summary file
+        summary_path = temp_dir / "summary.txt"
+        with open(summary_path, 'w') as f:
+            f.write(f"Evaluation Debug Files\n")
+            f.write(f"=====================\n\n")
+            f.write(f"Benchmark Dataset: {benchmark_dataset.name}\n")
+            f.write(f"Dataset ID: {benchmark_dataset_id}\n")
+            f.write(f"QA Records: {len(qa_data)}\n")
+            f.write(f"Corpus Records: {len(corpus_data)}\n")
+            f.write(f"Generated at: {datetime.utcnow()}\n\n")
+            f.write(f"VectorDB Path: {autorag_config.get('vectordb', [{}])[0].get('path', 'N/A')}\n")
+            f.write(f"Embedding Model: {autorag_config.get('vectordb', [{}])[0].get('embedding_model', 'N/A')}\n\n")
+            f.write(f"Files:\n")
+            f.write(f"- qa.parquet: QA data ({qa_path})\n")
+            f.write(f"- corpus.parquet: Corpus data ({corpus_path})\n")
+            f.write(f"- config.yaml: AutoRAG config ({config_path})\n")
+            f.write(f"- summary.txt: This file ({summary_path})\n")
+            f.write(f"- resources/: Directory for vectordb and other resources\n\n")
+            f.write(f"To clean up this directory later, run:\n")
+            f.write(f"rm -rf {temp_dir}\n")
+        
+        # Return file paths and info
+        return {
+            "status": "success",
+            "message": "Files saved to disk for inspection",
+            "file_paths": {
+                "temp_directory": str(temp_dir),
+                "qa_data": str(qa_path),
+                "corpus_data": str(corpus_path),
+                "config_file": str(config_path),
+                "summary_file": str(summary_path),
+                "vectordb_path": autorag_config.get('vectordb', [{}])[0].get('path', 'N/A')
+            },
+            "data_info": {
+                "qa_records": len(qa_data),
+                "corpus_records": len(corpus_data),
+                "qa_columns": list(qa_data.columns),
+                "corpus_columns": list(corpus_data.columns)
+            },
+            "config_info": {
+                "vectordb_path": autorag_config.get('vectordb', [{}])[0].get('path', 'N/A'),
+                "embedding_model": autorag_config.get('vectordb', [{}])[0].get('embedding_model'),
+                "collection_name": autorag_config.get('vectordb', [{}])[0].get('collection_name')
+            },
+            "cleanup_command": f"rm -rf {temp_dir}",
+            "note": "This directory will NOT be automatically cleaned up. Use the cleanup_command to remove it when done."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to save files: {str(e)}"
+        )
+
+
+@router.post("/test/download-and-config", response_model=dict)
+async def test_download_and_config(
+    benchmark_dataset_id: UUID,
+    evaluation_config: dict,
+    session: Session = Depends(get_session)
+):
+    """
+    Test endpoint to download benchmark data and generate AutoRAG config.
+    
+    This endpoint helps test the data download and config generation process
+    without running the full evaluation. Data is processed in memory only.
+    """
+    try:
+        # Validate benchmark dataset exists
+        benchmark_dataset = session.get(BenchmarkDataset, benchmark_dataset_id)
+        if not benchmark_dataset:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Benchmark dataset {benchmark_dataset_id} not found"
+            )
+        
+        # Download benchmark data
+        qa_data, corpus_data = await benchmark_service.download_benchmark_dataset(benchmark_dataset)
+        
+        # Generate AutoRAG config (no need for temp files for testing)
+        autorag_config = await evaluation_service._create_autorag_config(
+            evaluation_config=evaluation_config
+        )
+        
+        # Return test results
+        return {
+            "status": "success",
+            "message": "Successfully downloaded data and generated config",
+            "data_info": {
+                "qa_records": len(qa_data),
+                "corpus_records": len(corpus_data),
+                "qa_columns": list(qa_data.columns),
+                "corpus_columns": list(corpus_data.columns)
+            },
+            "config_info": {
+                "embedding_model": autorag_config.get("vectordb", [{}])[0].get("embedding_model"),
+                "collection_name": autorag_config.get("vectordb", [{}])[0].get("collection_name"),
+                "vectordb_path": autorag_config.get("vectordb", [{}])[0].get("path"),
+                "node_count": len(autorag_config.get("node_lines", [{}])[0].get("nodes", [])),
+                "retrieval_modules": [
+                    module.get("module_type") 
+                    for module in autorag_config.get("node_lines", [{}])[0].get("nodes", [{}])[0].get("modules", [])
+                ],
+                "generation_modules": [
+                    module.get("module_type") 
+                    for module in autorag_config.get("node_lines", [{}])[0].get("nodes", [{}])[-1].get("modules", [])
+                ]
+            },
+            "generated_config": autorag_config
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Test failed: {str(e)}"
+        )
+
+
+@router.get("/config/examples", response_model=EvaluationConfigExample)
+async def get_evaluation_config_examples():
+    """
+    Get evaluation configuration examples.
+    
+    Returns examples of basic and advanced evaluation configurations
+    that can be used when submitting evaluation runs.
+    """
+    return EvaluationConfigExample()
+
+
+@router.get("/config/schema", response_model=EvaluationConfigSchema)
+async def get_evaluation_config_schema():
+    """
+    Get evaluation configuration schema.
+    
+    Returns the schema for evaluation configuration with default values.
+    """
+    return EvaluationConfigSchema()
+
+
+async def run_evaluation_background(evaluation_id: UUID, benchmark_dataset_id: UUID, retriever_id: Optional[UUID]):
     """
     Background task to run evaluation
     """
@@ -344,9 +630,13 @@ async def run_evaluation_background(evaluation_id: UUID, benchmark_dataset_id: U
         # Get required records
         evaluation = session.get(EvaluationModel, evaluation_id)
         benchmark_dataset = session.get(BenchmarkDataset, benchmark_dataset_id)
-        retriever = session.get(Retriever, retriever_id)
         
-        if not all([evaluation, benchmark_dataset, retriever]):
+        # Get retriever if ID is provided
+        retriever = None
+        if retriever_id:
+            retriever = session.get(Retriever, retriever_id)
+        
+        if not all([evaluation, benchmark_dataset]):
             raise Exception("Required records not found")
         
         # Execute evaluation

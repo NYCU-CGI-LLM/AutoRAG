@@ -26,7 +26,7 @@ class Evaluation(SQLModel, table=True):
     user_id: Optional[str] = Field(default=None, description="User ID who created this evaluation")
     
     # Related entities
-    retriever_config_id: UUID = Field(..., description="Associated retriever configuration ID")
+    retriever_config_id: Optional[UUID] = Field(default=None, description="Associated retriever configuration ID (optional)")
     benchmark_dataset_id: Optional[UUID] = Field(default=None, description="Benchmark dataset ID")
     
     # Configuration
