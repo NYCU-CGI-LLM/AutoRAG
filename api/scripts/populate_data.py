@@ -6,8 +6,8 @@ Data population script for parser, chunker, and indexer tables
 import sys
 from pathlib import Path
 
-# Add the api directory to the Python path
-sys.path.append(str(Path(__file__).parent))
+api_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(api_dir))
 
 from app.core.database import engine
 from app.models.parser import Parser, ParserStatus

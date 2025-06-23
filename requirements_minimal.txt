@@ -79,3 +79,8 @@ boto3
 # Optional: Development tools
 pytest
 ruff 
+
+# HuggingFace
+datasets
+huggingface_hub
+fsspec
