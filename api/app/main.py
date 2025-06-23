@@ -53,10 +53,18 @@ async def startup_event():
 
     # Initialize MinIO buckets
     success = initialize_minio_buckets(
-        endpoint="localhost:9000",  # Use service name when running in Docker
-        access_key="adminadmin",
-        secret_key="adminadmin",
-        bucket_names=["rag-files", "rag-chunked-files", "rag-parsed-files"]
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key,
+        bucket_names=[
+            settings.minio_bucket_name,
+            settings.minio_benchmark_bucket,
+            settings.minio_evaluation_bucket,
+            "rag-chunked-files",
+            "rag-parsed-files",
+            "rag-indexes"
+        ],
+        secure=settings.minio_secure
     )
     
     if not success:

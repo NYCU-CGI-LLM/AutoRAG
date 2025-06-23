@@ -9,8 +9,19 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:admin@localhost:543
 engine = create_engine(DATABASE_URL, echo=True)
 
 
+def SessionLocal():
+    """Create a new database session"""
+    return Session(engine)
+
+
 def create_db_and_tables():
     """Create database tables"""
+    # Import all models to ensure they are registered with SQLModel
+    from app.models import (
+        User, Library, File, Retriever, Chat, Dialog, Parser, Chunker, 
+        Indexer, FileParseResult, FileChunkResult, Config, Evaluation, BenchmarkDataset
+    )
+    
     SQLModel.metadata.create_all(engine)
 
 

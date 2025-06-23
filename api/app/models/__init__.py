@@ -10,6 +10,7 @@ from .indexer import Indexer, IndexerStatus
 from .file_parse_result import FileParseResult, ParseStatus
 from .file_chunk_result import FileChunkResult, ChunkStatus
 from .config import Config, ConfigStatus
+from .evaluation import Evaluation, BenchmarkDataset, EvaluationStatus
 
 __all__ = [
     "User",
@@ -31,5 +32,8 @@ __all__ = [
     "FileChunkResult",
     "ChunkStatus",
     "Config",
-    "ConfigStatus"
+    "ConfigStatus",
+    "Evaluation",
+    "BenchmarkDataset",
+    "EvaluationStatus"
 ] 

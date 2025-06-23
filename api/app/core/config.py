@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     minio_secret_key: str = "adminadmin"
     minio_secure: bool = False
     minio_bucket_name: str = "autorag-files"
+    minio_benchmark_bucket: str = "rag-benchmarks"  # New bucket for evaluation benchmarks
+    minio_evaluation_bucket: str = "rag-evaluations"  # New bucket for evaluation results
     
     # Redis Configuration
     redis_host: str = "localhost"
@@ -74,6 +76,8 @@ logger.info(f"MinIO Access Key: {settings.minio_access_key}")
 logger.info(f"MinIO Secret Key: {settings.minio_secret_key[:10]}...")
 logger.info(f"MinIO Secure: {settings.minio_secure}")
 logger.info(f"MinIO Bucket: {settings.minio_bucket_name}")
+logger.info(f"MinIO Benchmark Bucket: {settings.minio_benchmark_bucket}")
+logger.info(f"MinIO Evaluation Bucket: {settings.minio_evaluation_bucket}")
 
 logger.info("=== REDIS CONFIGURATION ===")
 logger.info(f"Redis Host: {settings.redis_host}")

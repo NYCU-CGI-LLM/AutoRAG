@@ -339,7 +339,7 @@ async def update_retriever_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update status: {str(e)}")
 
-@router.delete("/{retriever_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+@router.delete("/{retriever_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_retriever(
     retriever_id: UUID,
     delete_collection: bool = True,

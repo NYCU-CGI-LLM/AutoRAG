@@ -233,7 +233,7 @@ async def send_message(
         raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 
-@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_chat(
     chat_id: UUID,
     session: Session = Depends(get_session)
