@@ -43,6 +43,7 @@ from typing import Dict, Any, Optional, List
 from uuid import UUID
 from pathlib import Path
 from datetime import datetime
+import io
 
 from app.models.evaluation import Evaluation, BenchmarkDataset
 from app.models.retriever import Retriever
@@ -183,7 +184,7 @@ class EvaluationService:
             self.minio_service.client.put_object(
                 bucket_name=self.evaluation_bucket,
                 object_name=results_object_key,
-                data=results_json.encode('utf-8'),
+                data=io.BytesIO(results_json.encode('utf-8')),
                 length=len(results_json.encode('utf-8')),
                 content_type="application/json"
             )
@@ -216,13 +217,35 @@ class EvaluationService:
             return evaluation
             
         finally:
-            # Clean up temporary workspace
+            # Keep temporary workspace for inspection - DO NOT DELETE
             if temp_workspace and temp_workspace.exists():
+                logger.info(f"=== EVALUATION FILES PRESERVED ===")
+                logger.info(f"Temporary workspace kept at: {temp_workspace}")
+                logger.info(f"Contents:")
                 try:
-                    shutil.rmtree(temp_workspace)
-                    logger.info(f"Cleaned up temporary workspace: {temp_workspace}")
+                    for root, dirs, files in os.walk(temp_workspace):
+                        level = root.replace(str(temp_workspace), '').count(os.sep)
+                        indent = ' ' * 2 * level
+                        logger.info(f"{indent}{os.path.basename(root)}/")
+                        subindent = ' ' * 2 * (level + 1)
+                        for file in files[:10]:  # Limit to first 10 files per directory
+                            logger.info(f"{subindent}{file}")
+                        if len(files) > 10:
+                            logger.info(f"{subindent}... and {len(files) - 10} more files")
                 except Exception as e:
-                    logger.warning(f"Failed to clean up temporary workspace {temp_workspace}: {e}")
+                    logger.warning(f"Could not list workspace contents: {e}")
+                
+                logger.info(f"To manually clean up later, run: rm -rf {temp_workspace}")
+                logger.info(f"=== END EVALUATION FILES INFO ===")
+            
+            # NOTE: Cleanup is temporarily disabled for debugging/inspection
+            # To re-enable cleanup, uncomment the following lines:
+            # 
+            # try:
+            #     shutil.rmtree(temp_workspace)
+            #     logger.info(f"Cleaned up temporary workspace: {temp_workspace}")
+            # except Exception as e:
+            #     logger.warning(f"Failed to clean up temporary workspace {temp_workspace}: {e}")
     
     async def _create_autorag_config(
         self,
@@ -264,14 +287,15 @@ class EvaluationService:
         else:
             vectordb_path = "${PROJECT_DIR}/resources/chroma"
         
-        # VectorDB configuration
+        # VectorDB configuration with small embedding batch to avoid token limits
         vectordb_config = {
-            "name": "default_vectordb",
+            "name": "default_vectordb_v1",
             "db_type": "chroma",
             "client_type": "persistent", 
             "embedding_model": embedding_model,
             "collection_name": collection_name,
-            "path": vectordb_path
+            "path": vectordb_path,
+            "embedding_batch": 10  # Reduce batch size to avoid token limits
         }
         
         # Retrieval strategy configuration
@@ -279,12 +303,13 @@ class EvaluationService:
         retrieval_metrics = retrieval_strategy.get("metrics", [
             "retrieval_f1", "retrieval_recall", "retrieval_precision"
         ])
-        retrieval_top_k = retrieval_strategy.get("top_k", 10)
+        retrieval_top_k = retrieval_strategy.get("top_k", 5)  # Reduce top_k to limit token usage
         
-        # Fixed to only use vectordb retrieval method
+        # Fixed to only use vectordb retrieval method with small embedding batch
         retrieval_modules = [{
             "module_type": "vectordb",
-            "vectordb": "default_vectordb"
+            "vectordb": "default_vectordb_v1",
+            "embedding_batch": 10  # Reduce batch size to avoid token limits
         }]
         
         # Generation strategy configuration  
@@ -300,7 +325,7 @@ class EvaluationService:
         llm_model = generator_config.get("model", "gpt-4o-mini")
         llm_temperature = generator_config.get("temperature", 0.7)
         llm_max_tokens = generator_config.get("max_tokens", 512)
-        batch_size = generator_config.get("batch", 16)
+        batch_size = generator_config.get("batch", 4)  # Reduce batch size to avoid token limits
         
         # Validate LLM model (ensure it's OpenAI)
         openai_models = [
@@ -334,6 +359,12 @@ class EvaluationService:
                         },
                         {
                             "node_type": "prompt_maker",
+                            "strategy": {
+                                "metrics": [
+                                    {"metric_name": "meteor"},
+                                    {"metric_name": "rouge"}
+                                ]
+                            },
                             "modules": [
                                 {
                                     "module_type": "fstring",
@@ -417,13 +448,22 @@ class EvaluationService:
             # Update progress
             evaluation.progress = 40.0
             
-            # Run AutoRAG evaluation
+            # Run AutoRAG evaluation in a thread pool to avoid event loop conflicts
             logger.info("Starting AutoRAG trial...")
-            evaluator.start_trial(
-                yaml_path=str(config_path),
-                skip_validation=True,  # Skip validation for faster execution
-                full_ingest=False  # Only ingest retrieval_gt corpus for faster execution
-            )
+            import asyncio
+            import concurrent.futures
+            
+            def run_autorag_trial():
+                evaluator.start_trial(
+                    yaml_path=str(config_path),
+                    skip_validation=True,  # Skip validation for faster execution
+                    full_ingest=False  # Only ingest retrieval_gt corpus for faster execution
+                )
+            
+            # Run in thread pool to avoid event loop conflicts
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                await loop.run_in_executor(executor, run_autorag_trial)
             
             # Update progress
             evaluation.progress = 80.0
@@ -624,9 +664,11 @@ class EvaluationService:
                 evaluation.results_object_key,
                 bucket_name=self.evaluation_bucket
             )
+            # MinIO response is already bytes, so we read it and decode directly
             results_data = results_response.read()
             results_response.close()
             
+            # Decode the bytes to string and parse JSON
             return json.loads(results_data.decode('utf-8'))
             
         except Exception as e:

@@ -15,7 +15,60 @@ class EvaluationBase(BaseModel):
 class EvaluationCreate(BaseModel):
     name: Optional[str] = Field(None, description="Evaluation run name")
     benchmark_dataset_id: UUID = Field(..., description="Benchmark dataset ID to use for evaluation")
-    evaluation_config: Dict[str, Any] = Field(..., description="Evaluation configuration parameters")
+    evaluation_config: Dict[str, Any] = Field(
+        default_factory=lambda: EvaluationConfigSchema().model_dump(),
+        description="Evaluation configuration parameters",
+        example={
+            "embedding_model": "openai_embed_3_large",
+            "retrieval_strategy": {
+                "metrics": ["retrieval_f1", "retrieval_recall", "retrieval_precision"],
+                "top_k": 10
+            },
+            "generation_strategy": {
+                "metrics": [
+                    {"metric_name": "bleu"},
+                    {"metric_name": "rouge"},
+                    {"metric_name": "meteor"}
+                ]
+            },
+            "generator_config": {
+                "model": "gpt-4o-mini",
+                "temperature": 0.7,
+                "max_tokens": 512,
+                "batch": 16
+            },
+            "prompt_template": "Read the passages and answer the given question.\n\nQuestion: {query}\n\nPassages: {retrieved_contents}\n\nAnswer: "
+        }
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "My Evaluation Run",
+                "benchmark_dataset_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "evaluation_config": {
+                    "embedding_model": "openai_embed_3_large",
+                    "retrieval_strategy": {
+                        "metrics": ["retrieval_f1", "retrieval_recall", "retrieval_precision"],
+                        "top_k": 10
+                    },
+                    "generation_strategy": {
+                        "metrics": [
+                            {"metric_name": "bleu"},
+                            {"metric_name": "rouge"},
+                            {"metric_name": "meteor"}
+                        ]
+                    },
+                    "generator_config": {
+                        "model": "gpt-4o-mini",
+                        "temperature": 0.7,
+                        "max_tokens": 512,
+                        "batch": 16
+                    },
+                    "prompt_template": "Read the passages and answer the given question.\n\nQuestion: {query}\n\nPassages: {retrieved_contents}\n\nAnswer: "
+                }
+            }
+        }
 
 
 class EvaluationConfigSchema(BaseModel):
