@@ -1,8 +1,11 @@
-from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, UploadFile, File, Form
 from typing import List, Optional
 from uuid import UUID
 from sqlmodel import Session, select, desc
 from datetime import datetime
+import pandas as pd
+import json
+from io import BytesIO
 
 from app.schemas.evaluation import (
     Evaluation,
@@ -10,9 +13,14 @@ from app.schemas.evaluation import (
     EvaluationDetail,
     EvaluationSummary,
     EvaluationStatusUpdate,
-    EvaluationMetrics
+    EvaluationMetrics,
+    BenchmarkDatasetCreate,
+    BenchmarkDatasetUpdate,
+    BenchmarkDataset,
+    BenchmarkDatasetDetail,
+    BenchmarkDatasetSummary
 )
-from app.models.evaluation import Evaluation as EvaluationModel, BenchmarkDataset
+from app.models.evaluation import Evaluation as EvaluationModel, BenchmarkDataset as BenchmarkDatasetModel
 from app.models.retriever import Retriever
 from app.services.evaluation_service import EvaluationService
 from app.services.benchmark_service import BenchmarkService
@@ -41,7 +49,7 @@ async def submit_evaluation_run(
     """
     try:
         # Validate benchmark dataset exists
-        benchmark_dataset = session.get(BenchmarkDataset, evaluation_create.benchmark_dataset_id)
+        benchmark_dataset = session.get(BenchmarkDatasetModel, evaluation_create.benchmark_dataset_id)
         if not benchmark_dataset:
             raise HTTPException(
                 status_code=404,
@@ -283,31 +291,324 @@ async def create_sample_benchmarks(session: Session = Depends(get_session)):
         raise HTTPException(status_code=500, detail=f"Failed to create sample benchmarks: {str(e)}")
 
 
-@router.get("/benchmarks/", response_model=List[dict])
-async def list_benchmark_datasets(session: Session = Depends(get_session)):
+@router.get("/benchmarks/", response_model=List[BenchmarkDatasetSummary])
+async def list_benchmark_datasets(
+    skip: int = 0,
+    limit: int = 100,
+    include_inactive: bool = False,
+    session: Session = Depends(get_session)
+):
     """
-    List available benchmark datasets.
+    List available benchmark datasets with pagination and filtering.
     """
     try:
-        statement = select(BenchmarkDataset).where(BenchmarkDataset.is_active == True)
+        statement = select(BenchmarkDatasetModel)
+        
+        if not include_inactive:
+            statement = statement.where(BenchmarkDatasetModel.is_active == True)
+        
+        statement = statement.order_by(desc(BenchmarkDatasetModel.created_at)).offset(skip).limit(limit)
         datasets = session.exec(statement).all()
         
         return [
-            {
-                "id": str(dataset.id),
-                "name": dataset.name,
-                "description": dataset.description,
-                "total_queries": dataset.total_queries,
-                "domain": dataset.domain,
-                "language": dataset.language,
-                "version": dataset.version,
-                "created_at": dataset.created_at
-            }
+            BenchmarkDatasetSummary(
+                id=dataset.id,
+                name=dataset.name,
+                description=dataset.description,
+                domain=dataset.domain,
+                language=dataset.language,
+                version=dataset.version,
+                total_queries=dataset.total_queries,
+                is_active=dataset.is_active,
+                created_at=dataset.created_at,
+                updated_at=dataset.updated_at
+            )
             for dataset in datasets
         ]
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list benchmark datasets: {str(e)}")
+
+
+@router.get("/benchmarks/{dataset_id}", response_model=BenchmarkDatasetDetail)
+async def get_benchmark_dataset(dataset_id: UUID, session: Session = Depends(get_session)):
+    """
+    Get detailed information about a specific benchmark dataset.
+    """
+    try:
+        dataset = session.get(BenchmarkDatasetModel, dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Benchmark dataset not found")
+        
+        # Get file information from MinIO
+        file_info = {}
+        try:
+            qa_info = benchmark_service.minio_service.client.stat_object(
+                bucket_name=benchmark_service.benchmark_bucket,
+                object_name=dataset.qa_data_object_key
+            )
+            corpus_info = benchmark_service.minio_service.client.stat_object(
+                bucket_name=benchmark_service.benchmark_bucket,
+                object_name=dataset.corpus_data_object_key
+            )
+            
+            file_info = {
+                "qa_file_size": qa_info.size,
+                "corpus_file_size": corpus_info.size,
+                "qa_last_modified": qa_info.last_modified,
+                "corpus_last_modified": corpus_info.last_modified
+            }
+        except Exception as e:
+            file_info = {"error": f"Could not retrieve file info: {str(e)}"}
+        
+        # Get sample data for preview
+        sample_data = {}
+        try:
+            qa_data, corpus_data = await benchmark_service.download_benchmark_dataset(dataset)
+            sample_data = {
+                "qa_sample": qa_data.head(3).to_dict('records'),
+                "corpus_sample": corpus_data.head(3).to_dict('records'),
+                "qa_columns": list(qa_data.columns),
+                "corpus_columns": list(corpus_data.columns)
+            }
+        except Exception as e:
+            sample_data = {"error": f"Could not retrieve sample data: {str(e)}"}
+        
+        return BenchmarkDatasetDetail(
+            id=dataset.id,
+            name=dataset.name,
+            description=dataset.description,
+            domain=dataset.domain,
+            language=dataset.language,
+            version=dataset.version,
+            evaluation_metrics=dataset.evaluation_metrics,
+            total_queries=dataset.total_queries,
+            qa_data_object_key=dataset.qa_data_object_key,
+            corpus_data_object_key=dataset.corpus_data_object_key,
+            is_active=dataset.is_active,
+            created_at=dataset.created_at,
+            updated_at=dataset.updated_at,
+            file_info=file_info,
+            sample_data=sample_data
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get benchmark dataset: {str(e)}")
+
+
+@router.post("/benchmarks", response_model=BenchmarkDataset, status_code=status.HTTP_201_CREATED)
+async def upload_benchmark_dataset(
+    qa_file: UploadFile = File(..., description="QA data file (parquet, CSV, or JSON)"),
+    corpus_file: UploadFile = File(..., description="Corpus data file (parquet, CSV, or JSON)"),
+    name: str = Form(..., description="Dataset name"),
+    description: str = Form(None, description="Dataset description"),
+    domain: str = Form(None, description="Dataset domain"),
+    language: str = Form("en", description="Dataset language"),
+    version: str = Form("1.0", description="Dataset version"),
+    evaluation_metrics: str = Form(None, description="JSON string of evaluation metrics"),
+    session: Session = Depends(get_session)
+):
+    """
+    Upload a new benchmark dataset with QA and corpus data files.
+    
+    Files should contain:
+    - QA data: columns ['qid', 'query', 'retrieval_gt', 'generation_gt']
+    - Corpus data: columns ['doc_id', 'contents', 'metadata' (optional)]
+    
+    Supported file formats: .parquet, .csv, .json
+    """
+    try:
+        # Validate file types
+        allowed_extensions = {'.parquet', '.csv', '.json'}
+        
+        def get_file_extension(filename: str) -> str:
+            return '.' + filename.split('.')[-1].lower() if '.' in filename else ''
+        
+        qa_ext = get_file_extension(qa_file.filename)
+        corpus_ext = get_file_extension(corpus_file.filename)
+        
+        if qa_ext not in allowed_extensions or corpus_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file format. Allowed: {allowed_extensions}"
+            )
+        
+        # Read QA data
+        qa_content = await qa_file.read()
+        qa_buffer = BytesIO(qa_content)
+        
+        if qa_ext == '.parquet':
+            qa_data = pd.read_parquet(qa_buffer)
+        elif qa_ext == '.csv':
+            qa_data = pd.read_csv(qa_buffer)
+        elif qa_ext == '.json':
+            qa_data = pd.read_json(qa_buffer)
+        
+        # Read corpus data
+        corpus_content = await corpus_file.read()
+        corpus_buffer = BytesIO(corpus_content)
+        
+        if corpus_ext == '.parquet':
+            corpus_data = pd.read_parquet(corpus_buffer)
+        elif corpus_ext == '.csv':
+            corpus_data = pd.read_csv(corpus_buffer)
+        elif corpus_ext == '.json':
+            corpus_data = pd.read_json(corpus_buffer)
+        
+        # Parse evaluation metrics if provided
+        eval_metrics = None
+        if evaluation_metrics:
+            try:
+                eval_metrics = json.loads(evaluation_metrics)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON format for evaluation_metrics")
+        
+        # Upload dataset using benchmark service
+        dataset = await benchmark_service.upload_benchmark_dataset(
+            name=name,
+            qa_data=qa_data,
+            corpus_data=corpus_data,
+            description=description,
+            domain=domain,
+            language=language,
+            version=version,
+            evaluation_metrics=eval_metrics
+        )
+        
+        # Save to database
+        session.add(dataset)
+        session.commit()
+        session.refresh(dataset)
+        
+        return BenchmarkDataset(
+            id=dataset.id,
+            name=dataset.name,
+            description=dataset.description,
+            domain=dataset.domain,
+            language=dataset.language,
+            version=dataset.version,
+            evaluation_metrics=dataset.evaluation_metrics,
+            total_queries=dataset.total_queries,
+            qa_data_object_key=dataset.qa_data_object_key,
+            corpus_data_object_key=dataset.corpus_data_object_key,
+            is_active=dataset.is_active,
+            created_at=dataset.created_at,
+            updated_at=dataset.updated_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload benchmark dataset: {str(e)}")
+
+
+@router.put("/benchmarks/{dataset_id}", response_model=BenchmarkDataset)
+async def update_benchmark_dataset(
+    dataset_id: UUID,
+    update_data: BenchmarkDatasetUpdate,
+    session: Session = Depends(get_session)
+):
+    """
+    Update benchmark dataset metadata.
+    
+    This endpoint only updates metadata, not the actual data files.
+    To update data files, upload a new dataset.
+    """
+    try:
+        dataset = session.get(BenchmarkDatasetModel, dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Benchmark dataset not found")
+        
+        # Update fields that are provided
+        update_dict = update_data.model_dump(exclude_unset=True)
+        for field, value in update_dict.items():
+            setattr(dataset, field, value)
+        
+        dataset.updated_at = datetime.utcnow()
+        
+        session.commit()
+        session.refresh(dataset)
+        
+        return BenchmarkDataset(
+            id=dataset.id,
+            name=dataset.name,
+            description=dataset.description,
+            domain=dataset.domain,
+            language=dataset.language,
+            version=dataset.version,
+            evaluation_metrics=dataset.evaluation_metrics,
+            total_queries=dataset.total_queries,
+            qa_data_object_key=dataset.qa_data_object_key,
+            corpus_data_object_key=dataset.corpus_data_object_key,
+            is_active=dataset.is_active,
+            created_at=dataset.created_at,
+            updated_at=dataset.updated_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update benchmark dataset: {str(e)}")
+
+
+@router.delete("/benchmarks/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_benchmark_dataset(
+    dataset_id: UUID,
+    hard_delete: bool = False,
+    session: Session = Depends(get_session)
+):
+    """
+    Delete a benchmark dataset.
+    
+    By default performs soft delete (sets is_active=False).
+    Set hard_delete=True to permanently remove the dataset and its files.
+    """
+    try:
+        dataset = session.get(BenchmarkDatasetModel, dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Benchmark dataset not found")
+        
+        # Check if dataset is being used in any evaluations
+        eval_statement = select(EvaluationModel).where(EvaluationModel.benchmark_dataset_id == dataset_id)
+        evaluations = session.exec(eval_statement).all()
+        
+        if evaluations and hard_delete:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot hard delete dataset: {len(evaluations)} evaluations are using this dataset"
+            )
+        
+        if hard_delete:
+            # Delete files from MinIO
+            try:
+                benchmark_service.minio_service.client.remove_object(
+                    bucket_name=benchmark_service.benchmark_bucket,
+                    object_name=dataset.qa_data_object_key
+                )
+                benchmark_service.minio_service.client.remove_object(
+                    bucket_name=benchmark_service.benchmark_bucket,
+                    object_name=dataset.corpus_data_object_key
+                )
+            except Exception as e:
+                # Log but don't fail the deletion if MinIO cleanup fails
+                import logging
+                logging.warning(f"Failed to delete files from MinIO: {e}")
+            
+            # Delete from database
+            session.delete(dataset)
+        else:
+            # Soft delete
+            dataset.is_active = False
+            dataset.updated_at = datetime.utcnow()
+        
+        session.commit()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete benchmark dataset: {str(e)}")
 
 
 async def run_evaluation_background(evaluation_id: UUID, benchmark_dataset_id: UUID, retriever_id: Optional[UUID]):
@@ -321,7 +622,7 @@ async def run_evaluation_background(evaluation_id: UUID, benchmark_dataset_id: U
         
         # Get required records
         evaluation = session.get(EvaluationModel, evaluation_id)
-        benchmark_dataset = session.get(BenchmarkDataset, benchmark_dataset_id)
+        benchmark_dataset = session.get(BenchmarkDatasetModel, benchmark_dataset_id)
         
         # Get retriever if ID is provided
         retriever = None

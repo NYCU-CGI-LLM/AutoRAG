@@ -211,4 +211,67 @@ class EvaluationMetrics(BaseModel):
     ndcg: Optional[float] = Field(None, description="NDCG score")
     mrr: Optional[float] = Field(None, description="Mean Reciprocal Rank")
     map_score: Optional[float] = Field(None, description="Mean Average Precision")
-    custom_metrics: Optional[Dict[str, float]] = Field(default_factory=dict, description="Custom metrics") 
+    custom_metrics: Optional[Dict[str, float]] = Field(default_factory=dict, description="Custom metrics")
+
+
+# Benchmark Dataset Schemas
+class BenchmarkDatasetBase(BaseModel):
+    name: str = Field(..., description="Benchmark dataset name", min_length=1, max_length=100)
+    description: Optional[str] = Field(None, description="Dataset description", max_length=500)
+    domain: Optional[str] = Field(None, description="Domain/topic of the dataset", max_length=50)
+    language: str = Field(default="en", description="Dataset language code", max_length=10)
+    version: str = Field(default="1.0", description="Dataset version", max_length=20)
+    evaluation_metrics: Optional[Dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "retrieval": ["retrieval_f1", "retrieval_recall", "retrieval_precision"],
+            "generation": ["bleu", "rouge", "meteor"]
+        },
+        description="Default evaluation metrics for this dataset"
+    )
+
+
+class BenchmarkDatasetCreate(BenchmarkDatasetBase):
+    """Schema for creating a new benchmark dataset via file upload"""
+    pass
+
+
+class BenchmarkDatasetUpdate(BaseModel):
+    """Schema for updating benchmark dataset metadata"""
+    name: Optional[str] = Field(None, description="Benchmark dataset name", min_length=1, max_length=100)
+    description: Optional[str] = Field(None, description="Dataset description", max_length=500)
+    domain: Optional[str] = Field(None, description="Domain/topic of the dataset", max_length=50)
+    language: Optional[str] = Field(None, description="Dataset language code", max_length=10)
+    version: Optional[str] = Field(None, description="Dataset version", max_length=20)
+    evaluation_metrics: Optional[Dict[str, Any]] = Field(None, description="Default evaluation metrics")
+    is_active: Optional[bool] = Field(None, description="Whether the dataset is active")
+
+
+class BenchmarkDataset(BenchmarkDatasetBase, IDModel, TimestampModel):
+    """Complete benchmark dataset with all fields"""
+    total_queries: int = Field(..., description="Total number of queries in dataset")
+    qa_data_object_key: str = Field(..., description="MinIO object key for QA data")
+    corpus_data_object_key: str = Field(..., description="MinIO object key for corpus data")
+    is_active: bool = Field(default=True, description="Whether this dataset is active/available")
+    
+    class Config:
+        from_attributes = True
+
+
+class BenchmarkDatasetDetail(BenchmarkDataset):
+    """Detailed benchmark dataset with additional statistics"""
+    file_info: Optional[Dict[str, Any]] = Field(None, description="File size and metadata information")
+    sample_data: Optional[Dict[str, Any]] = Field(None, description="Sample QA and corpus data for preview")
+
+
+class BenchmarkDatasetSummary(BaseModel):
+    """Summary view of benchmark dataset for listing"""
+    id: UUID = Field(..., description="Dataset ID")
+    name: str = Field(..., description="Dataset name")
+    description: Optional[str] = Field(None, description="Dataset description")
+    domain: Optional[str] = Field(None, description="Dataset domain")
+    language: str = Field(..., description="Dataset language")
+    version: str = Field(..., description="Dataset version")
+    total_queries: int = Field(..., description="Total number of queries")
+    is_active: bool = Field(..., description="Whether dataset is active")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp") 
