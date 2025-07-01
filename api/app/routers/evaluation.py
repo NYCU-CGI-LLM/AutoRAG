@@ -5,6 +5,7 @@ from sqlmodel import Session, select, desc
 from datetime import datetime
 import pandas as pd
 import json
+import numpy as np
 from io import BytesIO
 
 from app.schemas.evaluation import (
@@ -25,6 +26,30 @@ from app.models.retriever import Retriever
 from app.services.evaluation_service import EvaluationService
 from app.services.benchmark_service import BenchmarkService
 from app.core.database import get_session
+
+
+def convert_numpy_to_python(obj):
+    """
+    Recursively convert numpy arrays and other non-serializable objects to Python native types for JSON serialization.
+    """
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_to_python(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_to_python(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_to_python(item) for item in obj)
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif hasattr(obj, 'dtype') and obj.dtype.kind in {'U', 'S'}:  # numpy string types
+        return str(obj)
+    elif pd.isna(obj):  # pandas NaN values
+        return None
+    else:
+        return obj
 
 router = APIRouter(
     prefix="/eval",
@@ -355,8 +380,8 @@ async def get_benchmark_dataset(dataset_id: UUID, session: Session = Depends(get
             file_info = {
                 "qa_file_size": qa_info.size,
                 "corpus_file_size": corpus_info.size,
-                "qa_last_modified": qa_info.last_modified,
-                "corpus_last_modified": corpus_info.last_modified
+                "qa_last_modified": qa_info.last_modified.isoformat() if qa_info.last_modified else None,
+                "corpus_last_modified": corpus_info.last_modified.isoformat() if corpus_info.last_modified else None
             }
         except Exception as e:
             file_info = {"error": f"Could not retrieve file info: {str(e)}"}
@@ -365,32 +390,49 @@ async def get_benchmark_dataset(dataset_id: UUID, session: Session = Depends(get
         sample_data = {}
         try:
             qa_data, corpus_data = await benchmark_service.download_benchmark_dataset(dataset)
+            # Convert to dict records and handle numpy arrays
+            qa_sample = qa_data.head(3).to_dict('records')
+            corpus_sample = corpus_data.head(3).to_dict('records')
+            
+            # Debug: Let's see what types are in the data
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"QA sample types: {[type(v) for record in qa_sample for v in record.values()]}")
+            logger.info(f"Corpus sample types: {[type(v) for record in corpus_sample for v in record.values()]}")
+            
             sample_data = {
-                "qa_sample": qa_data.head(3).to_dict('records'),
-                "corpus_sample": corpus_data.head(3).to_dict('records'),
+                "qa_sample": convert_numpy_to_python(qa_sample),
+                "corpus_sample": convert_numpy_to_python(corpus_sample),
                 "qa_columns": list(qa_data.columns),
                 "corpus_columns": list(corpus_data.columns)
             }
+            
+            # Debug: Check after conversion
+            logger.info(f"After conversion - QA sample types: {[type(v) for record in sample_data['qa_sample'] for v in record.values()]}")
+            
         except Exception as e:
             sample_data = {"error": f"Could not retrieve sample data: {str(e)}"}
         
-        return BenchmarkDatasetDetail(
-            id=dataset.id,
-            name=dataset.name,
-            description=dataset.description,
-            domain=dataset.domain,
-            language=dataset.language,
-            version=dataset.version,
-            evaluation_metrics=dataset.evaluation_metrics,
-            total_queries=dataset.total_queries,
-            qa_data_object_key=dataset.qa_data_object_key,
-            corpus_data_object_key=dataset.corpus_data_object_key,
-            is_active=dataset.is_active,
-            created_at=dataset.created_at,
-            updated_at=dataset.updated_at,
-            file_info=file_info,
-            sample_data=sample_data
-        )
+        # Prepare response data with conversion
+        response_data = {
+            "id": dataset.id,
+            "name": dataset.name,
+            "description": dataset.description,
+            "domain": dataset.domain,
+            "language": dataset.language,
+            "version": dataset.version,
+            "evaluation_metrics": convert_numpy_to_python(dataset.evaluation_metrics),
+            "total_queries": dataset.total_queries,
+            "qa_data_object_key": dataset.qa_data_object_key,
+            "corpus_data_object_key": dataset.corpus_data_object_key,
+            "is_active": dataset.is_active,
+            "created_at": dataset.created_at,
+            "updated_at": dataset.updated_at,
+            "file_info": convert_numpy_to_python(file_info),
+            "sample_data": convert_numpy_to_python(sample_data)
+        }
+        
+        return BenchmarkDatasetDetail(**response_data)
         
     except HTTPException:
         raise
@@ -419,6 +461,9 @@ async def upload_benchmark_dataset(
     
     Supported file formats: .parquet, .csv, .json
     """
+    qa_data = None
+    corpus_data = None
+    
     try:
         # Validate file types
         allowed_extensions = {'.parquet', '.csv', '.json'}
@@ -439,23 +484,33 @@ async def upload_benchmark_dataset(
         qa_content = await qa_file.read()
         qa_buffer = BytesIO(qa_content)
         
-        if qa_ext == '.parquet':
-            qa_data = pd.read_parquet(qa_buffer)
-        elif qa_ext == '.csv':
-            qa_data = pd.read_csv(qa_buffer)
-        elif qa_ext == '.json':
-            qa_data = pd.read_json(qa_buffer)
+        try:
+            if qa_ext == '.parquet':
+                qa_data = pd.read_parquet(qa_buffer)
+            elif qa_ext == '.csv':
+                qa_data = pd.read_csv(qa_buffer)
+            elif qa_ext == '.json':
+                qa_data = pd.read_json(qa_buffer)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse QA file: {str(e)}")
         
         # Read corpus data
         corpus_content = await corpus_file.read()
         corpus_buffer = BytesIO(corpus_content)
         
-        if corpus_ext == '.parquet':
-            corpus_data = pd.read_parquet(corpus_buffer)
-        elif corpus_ext == '.csv':
-            corpus_data = pd.read_csv(corpus_buffer)
-        elif corpus_ext == '.json':
-            corpus_data = pd.read_json(corpus_buffer)
+        try:
+            if corpus_ext == '.parquet':
+                corpus_data = pd.read_parquet(corpus_buffer)
+            elif corpus_ext == '.csv':
+                corpus_data = pd.read_csv(corpus_buffer)
+            elif corpus_ext == '.json':
+                corpus_data = pd.read_json(corpus_buffer)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse corpus file: {str(e)}")
+        
+        # Validate data is loaded
+        if qa_data is None or corpus_data is None:
+            raise HTTPException(status_code=400, detail="Failed to load data files")
         
         # Parse evaluation metrics if provided
         eval_metrics = None
