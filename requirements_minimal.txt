@@ -36,15 +36,24 @@ fastapi
 uvicorn
 streamlit
 
-# Authentication (using PyJWT instead of python-jose to avoid conflicts)
+# Authentication and Security
 PyJWT[crypto]
 passlib[bcrypt]
+python-jose
 
-# Database
+# Database and Storage
 sqlalchemy
 sqlmodel
 psycopg2-binary
+alembic
 redis
+
+# Object Storage
+minio
+
+# Task Queue
+celery
+flower
 
 # Document processing
 pypdf
@@ -70,17 +79,16 @@ typer
 rich
 tqdm
 
-# Cloud providers
+# Cloud providers and AI APIs
 anthropic
 openai
 cohere
 boto3
 
-# Optional: Development tools
-pytest
-ruff 
-
-# HuggingFace
-datasets
+# HuggingFace ecosystem
 huggingface_hub
 fsspec
+
+# Development tools
+pytest
+ruff

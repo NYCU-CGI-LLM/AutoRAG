@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     chroma_path: str = Field(default="./resources/chroma")
     default_embedding_model: str = Field(default="openai_embed_3_large")
     embedding_batch_size: int = Field(default=100)
+    
+    # Qdrant Configuration
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
 
 logger = logging.getLogger(__name__)
 logger.info("Before Settings instantiation in config.py")
@@ -88,6 +92,10 @@ logger.info("=== CHROMADB CONFIGURATION ===")
 logger.info(f"Chroma Path: {settings.chroma_path}")
 logger.info(f"Default Embedding Model: {settings.default_embedding_model}")
 logger.info(f"Embedding Batch Size: {settings.embedding_batch_size}")
+
+logger.info("=== QDRANT CONFIGURATION ===")
+logger.info(f"Qdrant Host: {settings.qdrant_host}")
+logger.info(f"Qdrant Port: {settings.qdrant_port}")
 
 logger.info("=== ENVIRONMENT VARIABLES ===")
 logger.info(f"OPENAI_API_KEY: {os.getenv('OPENAI_API_KEY', 'NOT FOUND')[:20] if os.getenv('OPENAI_API_KEY') else 'NOT FOUND'}...")

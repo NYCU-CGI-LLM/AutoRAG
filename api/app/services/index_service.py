@@ -14,6 +14,7 @@ from app.models.retriever import Retriever, RetrieverStatus
 from app.models.config import Config
 from app.models.file_chunk_result import FileChunkResult, ChunkStatus
 from app.services.minio_service import MinIOService
+from app.core.config import settings
 
 # Import our enhanced Qdrant class directly
 from autorag.vectordb.qdrant import Qdrant
@@ -29,7 +30,7 @@ class IndexService:
         # Default Qdrant configuration for single server setup
         self.default_qdrant_config = {
             "client_type": "docker",
-            "url": "http://localhost:6333",
+            "url": f"http://{settings.qdrant_host}:{settings.qdrant_port}",
             "similarity_metric": "cosine",
             "store_text": True,
             "use_uuid_ids": True,
