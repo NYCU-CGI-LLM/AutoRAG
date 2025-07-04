@@ -1,6 +1,31 @@
 version: '3'
 
 services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: autorag_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
   redis:
     image: redis:latest
     ports:
@@ -8,9 +33,43 @@ services:
     networks:
       - app-network
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: autorag-qdrant
+    ports:
+      - "6333:6333"      # Qdrant HTTP API
+      - "6334:6334"      # Qdrant gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - app-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: autorag-minio
+    ports:
+      - "9000:9000"      # MinIO API
+      - "9001:9001"      # MinIO Console
+    environment:
+      MINIO_ROOT_USER: adminadmin
+      MINIO_ROOT_PASSWORD: adminadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - app-network
+
   api:
     build:
-      context: ./api
+      context: .
       dockerfile: Dockerfile
     volumes:
       - ./api:/app/api
@@ -22,37 +81,51 @@ services:
       - "8501:8501" # for streamlit chat
       - "8100:8100" # for chat API server
     environment:
-      - WATCHFILES_FORCE_POLLING=true  # Docker on Windows/macOS를 위한 설정
+      - WATCHFILES_FORCE_POLLING=true  # Docker on Windows/macOS support
       - TZ=Asia/Seoul
-      - PYTHONPATH=/app/api
+      - PYTHONPATH=/app:/app/autorag
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - LOG_LEVEL=DEBUG     # 로그 레벨 설정
-      - PYTHONUNBUFFERED=1  # Python 출력 버퍼링 비활성화
+      - LOG_LEVEL=DEBUG     # Log level setting
+      - PYTHONUNBUFFERED=1  # Disable Python output buffering
+      - DATABASE_URL=postgresql://admin:admin@postgres:5432/autorag_db
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=adminadmin
+      - MINIO_SECRET_KEY=adminadmin
+      - MINIO_SECURE=false
+      - MINIO_BUCKET_NAME=autorag-files
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
     depends_on:
       - redis
+      - postgres
+      - minio
+      - qdrant
     networks:
       - app-network
 
-  flower:
-    image: mher/flower
-    command: celery flower --broker=redis://redis:6379/0 --port=5555
-    ports:
-      - "5555:5555"
-    environment:
-      - TZ=Asia/Seoul
-      - FLOWER_BROKER_API=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      - redis
-      - api
-    networks:
-      - app-network
+  # flower:
+  #   image: mher/flower
+  #   command: celery flower --broker=redis://redis:6379/0 --port=5555
+  #   ports:
+  #     - "5555:5555"
+  #   environment:
+  #     - TZ=Asia/Seoul
+  #     - FLOWER_BROKER_API=redis://redis:6379/0
+  #     - CELERY_BROKER_URL=redis://redis:6379/0
+  #     - CELERY_RESULT_BACKEND=redis://redis:6379/0
+  #   depends_on:
+  #     - redis
+  #     - api
+  #   networks:
+  #     - app-network
 
+  # Frontend service
   app:
     build:
-      context: ./autorag-frontend
+      context: ./rag_ui
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -71,6 +144,9 @@ services:
 
 volumes:
   redis_data:
+  postgres_data:
+  minio_data:
+  qdrant_data:
 
 networks:
   app-network:

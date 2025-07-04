@@ -1,0 +1,19 @@
+# Testing dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+pytest-xdist>=3.0.0
+httpx>=0.24.0
+pytest-env>=0.8.0
+
+# Database testing - removed PostgreSQL dependencies
+sqlalchemy-utils>=0.41.0
+
+# Mocking and fixtures
+factory-boy>=3.2.0
+faker>=18.0.0
+
+# API testing
+requests>=2.28.0
+responses>=0.23.0 

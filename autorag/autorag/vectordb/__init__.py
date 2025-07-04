@@ -37,8 +37,8 @@ def load_vectordb_from_yaml(yaml_path: str, vectordb_name: str, project_dir: str
 		return load_vectordb(
 			"chroma",
 			client_type="persistent",
-			embedding_model="openai",
-			collection_name="openai",
+			embedding_model="openai_embed_3_large",
+			collection_name="openai_embed_3_large",
 			path=chroma_path,
 		)
 

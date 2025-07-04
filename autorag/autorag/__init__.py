@@ -17,6 +17,10 @@ from llama_index.llms.openai_like import OpenAILike
 from langchain_openai.embeddings import OpenAIEmbeddings
 from rich.logging import RichHandler
 
+from autorag.parser import Parser
+from autorag.chunker import Chunker
+from autorag.indexer import Indexer
+
 version_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION")
 
 with open(version_path, "r") as f:

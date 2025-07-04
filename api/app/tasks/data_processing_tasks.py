@@ -13,6 +13,7 @@ from app.core.data_processing import (
     _DEFAULT_PARSER_YAML_PATH,
     _DEFAULT_CHUNKER_YAML_PATH,
 )
+from app.core.index import index_corpus
 
 logger = logging.getLogger(__name__)
 
@@ -320,4 +321,137 @@ def handle_chunking_failure_task(self, *args, chunk_variation_metadata_path_str:
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Task {self.request.id}: Error updating chunking metadata to failed at {chunk_variation_metadata_path_str}: {str(e)}", exc_info=True)
+        raise
+
+# === Indexing Data Task ===
+
+@shared_task(bind=True)
+def index_data_task(
+    self,
+    kb_id_str: str,
+    parse_id_str: str,
+    chunk_id_str: str,
+    index_id_str: str,
+    chunked_file_path: str, # This comes from a chunking variation's output
+    vectordb_name_key: str, # The key to use from the vectordb.yaml (e.g., "default" or "vectordb_openai")
+):
+    """
+    Celery task to index a processed corpus file into the vector database for a specific variation.
+    """
+    load_dotenv(ENV_FILEPATH)
+    
+    # Construct the specific index variation output directory path
+    # This path is ROOT_DIR/.kbs/<kb_id>/variations/<parse_id>/<chunk_id>/<index_id>
+    # ROOT_DIR is /app/api in this context
+    base_kb_dir = os.getenv("AUTORAG_KB_DIR", os.path.join(str(ROOT_DIR), ".kbs"))
+    index_variation_dir = os.path.join(
+        base_kb_dir, 
+        kb_id_str, 
+        "variations", 
+        parse_id_str, 
+        chunk_id_str, 
+        index_id_str
+    )
+
+    # This index_variation_dir becomes the project_dir for index_corpus.
+    # index_corpus will look for ./resources/vectordb.yaml within this directory.
+    # It will also create its vector database within this directory.
+
+    try:
+        logger.info(f"Task {self.request.id}: Starting indexing. KB_ID: {kb_id_str}, Parse_ID: {parse_id_str}, Chunk_ID: {chunk_id_str}, Index_ID: {index_id_str}.")
+        logger.info(f"Task {self.request.id}: Corpus file: {chunked_file_path}. VectorDB config key: {vectordb_name_key}. Index variation dir (project_dir for index_corpus): {index_variation_dir}")
+        
+        # Ensure the index_variation_dir exists (the router should have created it)
+        os.makedirs(index_variation_dir, exist_ok=True)
+        # The router should have also created index_variation_dir/resources/vectordb.yaml
+
+        index_corpus(
+            project_dir=index_variation_dir,
+            corpus_path=chunked_file_path,
+            vectordb_name=vectordb_name_key, # This is the key within the copied vectordb.yaml
+        )
+        
+        logger.info(f"Task {self.request.id}: Indexing completed for Index_ID: {index_id_str}.")
+        return {
+            "status": "success",
+            "indexed_in_dir": index_variation_dir,
+            "vectordb_name_key_used": vectordb_name_key,
+            "kb_id": kb_id_str, # Keep original IDs for reference
+            "parse_id": parse_id_str,
+            "chunk_id": chunk_id_str,
+            "index_id": index_id_str
+        }
+    except Exception as e:
+        logger.error(f"Task {self.request.id}: Error in index_data_task for Index_ID {index_id_str} in dir {index_variation_dir}: {str(e)}", exc_info=True)
+        raise
+
+# === Indexing Variation Finalization and Failure Handling Tasks ===
+
+@shared_task(bind=True)
+def finalize_indexing_variation_task(self, parent_task_result: dict, *args, index_variation_metadata_path_str: str):
+    """
+    Celery task to finalize indexing variation metadata upon successful completion of index_data_task.
+    """
+    load_dotenv(ENV_FILEPATH)
+    logger.info(f"Task {self.request.id}: Finalizing indexing variation. Parent task result: {parent_task_result}. Metadata file: {index_variation_metadata_path_str}")
+    try:
+        if not os.path.exists(index_variation_metadata_path_str):
+            logger.error(f"Task {self.request.id}: Metadata file {index_variation_metadata_path_str} not found.")
+            return {"status": "error", "message": "Metadata file not found."}
+
+        with open(index_variation_metadata_path_str, 'r+') as f:
+            metadata = json.load(f)
+            
+            metadata["status"] = "completed"
+            # Assuming parent_task_result contains relevant info like indexed_file_path if it changes or needs confirmation
+            # metadata["indexed_file_path"] = parent_task_result.get("indexed_corpus_path") # Already set at creation, might not need update
+            metadata["updated_at"] = datetime.utcnow().isoformat()
+            metadata["celery_task_id"] = None # Clear task ID on completion
+            
+            f.seek(0)
+            json.dump(metadata, f, indent=4)
+            f.truncate()
+        
+        logger.info(f"Task {self.request.id}: Successfully updated metadata at {index_variation_metadata_path_str} to completed.")
+        return {"status": "success", "updated_metadata_path": index_variation_metadata_path_str}
+    except Exception as e:
+        logger.error(f"Task {self.request.id}: Error finalizing indexing variation metadata at {index_variation_metadata_path_str}: {str(e)}", exc_info=True)
+        raise
+
+@shared_task(bind=True)
+def handle_indexing_failure_task(self, *args, index_variation_metadata_path_str: str):
+    """
+    Celery task to update indexing variation metadata upon failure of index_data_task.
+    """
+    load_dotenv(ENV_FILEPATH)
+    # The first argument to an error callback is the request object of the task that failed.
+    # The second argument is the exception raised by the failed task.
+    # The third argument is its traceback.
+    # We capture them using *args here for logging/debugging if needed.
+    request_obj, exc, traceback = args if len(args) >=3 else (None, args[0] if args else "Unknown error", None)
+    
+    logger.info(f"Task {self.request.id}: Handling failure for indexing variation (parent task ID: {self.request.parent_id}). Metadata file: {index_variation_metadata_path_str}. Exception: {exc}")
+    try:
+        if not os.path.exists(index_variation_metadata_path_str):
+            logger.error(f"Task {self.request.id}: Metadata file {index_variation_metadata_path_str} not found during failure handling.")
+            return {"status": "error", "message": "Metadata file not found during failure handling."}
+
+        with open(index_variation_metadata_path_str, 'r+') as f:
+            metadata = json.load(f)
+            
+            metadata["status"] = "failed"
+            # metadata["error_message"] = str(exc) # Optionally store the error message
+            metadata["updated_at"] = datetime.utcnow().isoformat()
+            # celery_task_id might remain as the ID of the failed task, or be cleared.
+            # Clearing it might be confusing if user wants to look up that ID in Celery logs.
+            # Let's keep it for now. If an error occurs in the callback itself, then it's a different issue.
+            
+            f.seek(0)
+            json.dump(metadata, f, indent=4)
+            f.truncate()
+
+        logger.info(f"Task {self.request.id}: Successfully updated metadata at {index_variation_metadata_path_str} to failed.")
+        return {"status": "success", "updated_metadata_path": index_variation_metadata_path_str}
+    except Exception as e:
+        logger.error(f"Task {self.request.id}: Error updating indexing variation metadata to failed at {index_variation_metadata_path_str}: {str(e)}", exc_info=True)
         raise

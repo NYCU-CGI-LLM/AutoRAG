@@ -1,0 +1,94 @@
+# Core ML and AI packages
+torch
+transformers
+sentence-transformers
+accelerate
+datasets
+evaluate
+
+# LangChain ecosystem
+langchain
+langchain-community
+langchain-core
+langchain-openai
+langchain-text-splitters
+langchain-unstructured
+langchain-upstage
+
+# LlamaIndex ecosystem
+llama-index
+llama-index-embeddings-huggingface
+llama-index-embeddings-openai
+llama-index-llms-openai
+llama-index-llms-anthropic
+llama-index-llms-ollama
+llama-index-readers-file
+llama-parse
+
+# Vector databases and search
+chromadb
+qdrant-client
+milvus-lite
+rank-bm25
+
+# Web framework and API
+fastapi
+uvicorn
+streamlit
+
+# Authentication and Security
+PyJWT[crypto]
+passlib[bcrypt]
+python-jose
+
+# Database and Storage
+sqlalchemy
+sqlmodel
+psycopg2-binary
+alembic
+redis
+
+# Object Storage
+minio
+
+# Task Queue
+celery
+flower
+
+# Document processing
+pypdf
+pdfplumber
+unstructured
+python-multipart
+
+# HTTP clients
+httpx
+requests
+
+# Data processing
+pandas
+numpy
+scipy
+scikit-learn
+
+# Utilities
+python-dotenv
+pydantic
+pydantic-settings
+typer
+rich
+tqdm
+
+# Cloud providers and AI APIs
+anthropic
+openai
+cohere
+boto3
+
+# HuggingFace ecosystem
+huggingface_hub
+fsspec
+
+# Development tools
+pytest
+ruff

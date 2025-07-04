@@ -11,7 +11,23 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from langchain_openai.embeddings import OpenAIEmbeddings
 from llama_index.embeddings.openai_like import OpenAILikeEmbedding
 
-from autorag import LazyInit
+# Define LazyInit locally to avoid circular import
+class LazyInit:
+	def __init__(self, factory, *args, **kwargs):
+		self._factory = factory
+		self._args = args
+		self._kwargs = kwargs
+		self._instance = None
+
+	def __call__(self):
+		if self._instance is None:
+			self._instance = self._factory(*self._args, **self._kwargs)
+		return self._instance
+
+	def __getattr__(self, name):
+		if self._instance is None:
+			self._instance = self._factory(*self._args, **self._kwargs)
+		return getattr(self._instance, name)
 
 logger = logging.getLogger("AutoRAG")
 

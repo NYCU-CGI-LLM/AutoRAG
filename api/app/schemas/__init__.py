@@ -1,28 +1,81 @@
 from .auth import Token, TokenData
 from .common import OrmBase, IDModel, TimestampModel, TaskStatusEnum, TaskStatus
-from .knowledge_base import (
-    KnowledgeBase,
-    KnowledgeBaseCreate,
-    KnowledgeBaseDetail,
+
+from .utilities import ReverseRequest, TaskResponse as CeleryTaskResponse
+
+from .dev import (
+    ParseRequest,
+    ParseResponse,
     FileInfo,
-    VariationSummary,
+    ParserInfo,
+    ParseResultInfo,
+    ParsedDataResponse,
+    DeleteResponse,
+    HealthResponse,
+    ChunkRequest,
+    ChunkResponse,
+    ChunkerInfo,
+    ChunkResultInfo,
+    ChunkedDataResponse,
 )
-from .query import QueryRequest, QueryResponse, RetrievedDocument
-from .task_schemas import ReverseRequest, TaskResponse as CeleryTaskResponse
-from .variation import (
-    BM25Options,
-    EmbeddingModelConfig,
-    VectorDBConfig,
-    EmbeddingOptions,
-    IndexerConfigBase,
-    VariationBase,
-    VariationCreate,
-    Variation,
+
+from .library import (
+    Library,
+    LibraryCreate,
+    LibraryDetail,
+    FileUploadResponse,
 )
-from .parsing_variation import (
-    ParsingVariationBase,
-    ParsingVariationCreate,
-    ParsingVariation
+
+from .retriever import (
+    # Legacy schemas (for backward compatibility)
+    RetrieverConfig,
+    RetrieverConfigCreate,
+    RetrieverConfigDetail,
+    IndexingStatusUpdate,
+    # New retriever service schemas
+    RetrieverCreateRequest,
+    RetrieverBuildRequest,
+    RetrieverQueryRequest,
+    RetrieverResponse,
+    RetrieverBuildResponse,
+    RetrieverQueryResponse,
+    RetrieverStatsResponse,
+    RetrieverListResponse,
+    RetrieverStatusUpdate,
+    ComponentInfo,
+    RetrieverDetailResponse,
+)
+
+from .chat import (
+    Chat,
+    ChatCreate,
+    ChatDetail,
+    ChatSummary,
+    Message,
+    MessageCreate,
+    MessageResponse,
+    MessageRole,
+)
+
+from .evaluation import (
+    Evaluation,
+    EvaluationCreate,
+    EvaluationDetail,
+    EvaluationSummary,
+    EvaluationResult,
+    EvaluationStatusUpdate,
+    EvaluationMetrics,
+)
+
+from . import (
+    auth,
+    chat,
+    common,
+    dev,
+    evaluation,
+    library,
+    retriever,
+    utilities
 )
 
 __all__ = [
@@ -33,25 +86,58 @@ __all__ = [
     "TimestampModel",
     "TaskStatusEnum",
     "TaskStatus",
-    "KnowledgeBase",
-    "KnowledgeBaseCreate",
-    "KnowledgeBaseDetail",
-    "FileInfo",
-    "VariationSummary",
-    "QueryRequest",
-    "QueryResponse",
-    "RetrievedDocument",
     "ReverseRequest",
     "CeleryTaskResponse",
-    "BM25Options",
-    "EmbeddingModelConfig",
-    "VectorDBConfig",
-    "EmbeddingOptions",
-    "IndexerConfigBase",
-    "VariationBase",
-    "VariationCreate",
-    "Variation",
-    "ParsingVariationBase",
-    "ParsingVariationCreate",
-    "ParsingVariation",
+    "ParseRequest",
+    "ParseResponse",
+    "FileInfo",
+    "ParserInfo",
+    "ParseResultInfo",
+    "ParsedDataResponse",
+    "DeleteResponse",
+    "HealthResponse",
+    "Library",
+    "LibraryCreate",
+    "LibraryDetail",
+    "FileUploadResponse",
+    # Legacy retriever schemas
+    "RetrieverConfig",
+    "RetrieverConfigCreate",
+    "RetrieverConfigDetail",
+    "IndexingStatusUpdate",
+    # New retriever service schemas
+    "RetrieverCreateRequest",
+    "RetrieverBuildRequest",
+    "RetrieverQueryRequest",
+    "RetrieverResponse",
+    "RetrieverBuildResponse",
+    "RetrieverQueryResponse",
+    "RetrieverStatsResponse",
+    "RetrieverListResponse",
+    "RetrieverStatusUpdate",
+    "ComponentInfo",
+    "RetrieverDetailResponse",
+    "Chat",
+    "ChatCreate",
+    "ChatDetail",
+    "ChatSummary",
+    "Message",
+    "MessageCreate",
+    "MessageResponse",
+    "MessageRole",
+    "Evaluation",
+    "EvaluationCreate",
+    "EvaluationDetail",
+    "EvaluationSummary",
+    "EvaluationResult",
+    "EvaluationStatusUpdate",
+    "EvaluationMetrics",
+    "auth",
+    "chat",
+    "common",
+    "dev",
+    "evaluation",
+    "library",
+    "retriever",
+    "utilities"
 ]

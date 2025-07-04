@@ -1,0 +1,74 @@
+# Git
+.git
+.gitignore
+.gitmodules
+
+# Documentation
+*.md
+docs/
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+LICENSE
+CNAME
+
+# Development
+.vscode/
+.cursor_task/
+.pre-commit-config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Node.js (for frontend)
+node_modules/
+autorag-frontend/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+temp/
+tmp/
+*.tmp
+*.log
+
+# Test files
+tests/
+*_test.py
+test_*.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+AutoRAG.egg-info/
+
+# Project specific
+projects/
+sample_dataset/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Test files (but keep test_autorag_import.py)
+!test_autorag_import.py 

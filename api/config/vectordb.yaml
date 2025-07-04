@@ -1,0 +1,18 @@
+vectordb:
+  - name: api_chroma_openai
+    db_type: chroma
+    client_type: persistent
+    embedding_model: openai_embed_3_large
+    collection_name: "api_default"
+    path: ${PROJECT_DIR}/resources/chroma
+    similarity_metric: cosine
+    embedding_batch: 100
+    
+  - name: api_chroma_mock
+    db_type: chroma
+    client_type: persistent
+    embedding_model: mock
+    collection_name: "api_mock"
+    path: ${PROJECT_DIR}/resources/chroma
+    similarity_metric: cosine
+    embedding_batch: 100 

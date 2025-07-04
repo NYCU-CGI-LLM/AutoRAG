@@ -1,0 +1,27 @@
+modules:
+  - module_type: vectordb_index
+    index_type: vector
+    vectordb_type: chroma
+    embedding_model: openai_embed_3_large
+    collection_name: my_documents
+    client_type: persistent
+    path: ./resources/chroma
+  
+  - module_type: vectordb_index
+    index_type: vector
+    vectordb_type: pinecone
+    embedding_model: openai_embed_3_large
+    collection_name: my_documents_pinecone
+    similarity_metric: cosine
+    cloud: aws
+    region: us-east-1
+    api_key: ${PINECONE_API_KEY}
+  
+  - module_type: vectordb_index
+    index_type: vector
+    vectordb_type: qdrant
+    embedding_model: openai_embed_3_small
+    collection_name: my_documents_qdrant
+    similarity_metric: cosine
+    client_type: docker
+    url: http://localhost:6333 
